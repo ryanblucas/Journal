@@ -1,0 +1,11 @@
+Architecture
+    Factor some logic out of console_win32 into an editor file
+        Line manipulation
+        Events
+    Remnants of unsigned math
+    Action strings aren't really gonna be freed, so they should all be in a contiguous piece of memory
+
+Features
+    Error handling is 
+    Fix DMC compression
+    RSA file encryption
