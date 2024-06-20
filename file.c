@@ -14,11 +14,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define DMC_MAGIC_HEADER		"dmc"
-#define DMC_MAGIC_HEADER_LEN	3
 #define DMC_EXTENSION			".dmc"
 #define PLAIN_EXTENSION			".txt"
 #define EXTENSION_LEN			4
+
+static char dmc_header[3] = { 0xDD, 0x17, 0xCC };
 
 /* does file exist */
 bool file_exists(const char* directory)
@@ -49,51 +49,23 @@ bool file_get_name(const char* directory, char* buf, int size)
 bool file_get_type(const char* directory, file_type_t* type)
 {
 	assert(directory != NULL && type);
-	FILE* file = fopen(directory, "r");
+	FILE* file = fopen(directory, "rb");
 	char header[4];
 	if (!file || fread(header, 1, 4, file) != 4)
 		return false;
-	if (file_extension_to_type(strrchr(directory, '.')) == TYPE_COMPRESSED && memcmp(header, DMC_MAGIC_HEADER, DMC_MAGIC_HEADER_LEN) == 0)
-		*type = /*TYPE_COMPRESSED*/TYPE_UNKNOWN;
+	*type = TYPE_UNKNOWN;
+	if (memcmp(header, dmc_header, sizeof dmc_header) == 0)
+		*type = TYPE_COMPRESSED;
 	else
 		*type = TYPE_PLAIN;
 	return true;
-}
-
-static bool file_raw_to_lines(const char* buf, long size, list_t lines)
-{
-	line_t current = { .string = list_create(sizeof(char)) };
-	if (!current.string)
-		return false;
-	for (long i = 0; i < size; i++)
-	{
-		if (CHECK_FOR_NEWLINE(buf[i]))
-		{
-			list_t new_string = list_create(sizeof(char));
-			if (!LIST_PUSH(lines, current) || !new_string)
-				return false;
-			current.string = new_string;
-		}
-		else if (buf[i] == '\t')
-		{
-			int tabc = TAB_SIZE - list_count(current.string) % TAB_SIZE;
-			for (int j = 0; j < tabc; j++)
-			{
-				if (!list_push_primitive(current.string, (void*)' '))
-					return false;
-			}
-		}
-		else if (!LIST_PUSH(current.string, buf[i]))
-			return false;
-	}
-	return LIST_PUSH(lines, current);
 }
 
 /* determines type of file and then delegates open function to the appropriate function */
 file_details_t file_open(const char* directory, open_func_t func)
 {
 	assert(directory != NULL && func != NULL);
-	FILE* file = fopen(directory, "r");
+	FILE* file = fopen(directory, "rb");
 	if (!file)
 		return FAILED_FILE_DETAILS;
 	long size;
@@ -111,14 +83,18 @@ file_details_t file_open(const char* directory, open_func_t func)
 	}
 	free(buf);
 
-	list_t lines = list_create(sizeof(line_t));
+	list_t lines = editor_create_lines();
 	if (!lines)
 	{
 		list_destroy(parsed);
 		return FAILED_FILE_DETAILS;
 	}
 
-	bool result = file_raw_to_lines(list_element_array(parsed), size, lines);
+	coords_t temp = { 0 };
+	bool result = editor_format_raw(parsed)
+		&& list_push_primitive(parsed, (void*)'\0')
+		&& editor_add_raw(lines, list_element_array(parsed), &temp);
+
 	list_destroy(parsed);
 	if (!result)
 	{
@@ -132,7 +108,7 @@ file_details_t file_open(const char* directory, open_func_t func)
 bool file_save(const file_details_t details, save_func_t func)
 {
 	assert(details.directory != NULL);
-	FILE* file = fopen(details.directory, "w");
+	FILE* file = fopen(details.directory, "wb");
 	if (!file)
 		return false;
 
@@ -212,7 +188,7 @@ bool file_save_plain_func(FILE* file, const char* src, int size)
 
 struct node
 {
-	float count[2];		/* how many transistions occured out of this state */
+	float count[2];			/* how many transistions occured out of this state */
 	struct node* next[2];	/* next node(s) in tree */
 };
 
@@ -265,7 +241,7 @@ static bool dmc_predictor_init(struct dmc_state* state)
 }
 
 /* returns chance for interval */
-static int dmc_predictor(struct dmc_state* state)
+static float dmc_predictor(struct dmc_state* state)
 {
 	return state->curr->count[0] / (state->curr->count[0] + state->curr->count[1]);
 }
@@ -299,10 +275,11 @@ static void dmc_predictor_update(struct dmc_state* state, bool bit)
 bool file_open_dynamic_markov_model_func(const char* buf, long size, list_t out)
 {
 	assert(buf && size > 0 && out && list_element_size(out) == sizeof(char));
-	{
-		if (memcmp(buf, DMC_MAGIC_HEADER, DMC_MAGIC_HEADER_LEN) != 0)
-			return false;
-	}
+	if (size < 6)
+		return false;
+
+	if (memcmp(buf, dmc_header, sizeof dmc_header) != 0)
+		return false;
 	
 	struct dmc_state* state = malloc(sizeof * state);
 	if (!state || !dmc_predictor_init(state))
@@ -316,19 +293,9 @@ bool file_open_dynamic_markov_model_func(const char* buf, long size, list_t out)
 		out_bytes = 0,
 		pin = in_bytes; /* TO DO: what does pin represent? */
 
-	int val;
+	int val = (buf[3] << 16) + (buf[4] << 8) + buf[5];
+	for (int i = 6; i < size; )
 	{
-		char val_init[3];
-		read_char(buf, 3, size, val_init);
-		read_char(buf, 4, size, val_init);
-		read_char(buf, 5, size, val_init);
-		val = (val_init[0] << 16) + (val_init[1] << 8) + val_init[2];
-	}
-
-	for (int i = 6; i < size; i++)
-	{
-		if (val == (max - 1))
-			break; /* EOF */
 		int ch = 0;
 		for (int j = 0; j < 8; j++)
 		{
@@ -353,7 +320,7 @@ bool file_open_dynamic_markov_model_func(const char* buf, long size, list_t out)
 					max--;
 				in_bytes++;
 				char nxt;
-				read_char(buf, i, size, &nxt);
+				read_char(buf, i++, size, &nxt);
 				val = (val << 8) & 0xFFFF00 | (nxt & 0xFF);
 				min = (min << 8) & 0xFFFF00;
 				max = (max << 8) & 0xFFFF00;
@@ -378,7 +345,7 @@ bool file_save_dynamic_markov_model_func(FILE* file, const char* buf, int size)
 {
 	assert(file && buf && size > 0);
 	
-	fwrite(DMC_MAGIC_HEADER, 1, 3, file);
+	fwrite(dmc_header, 1, 3, file);
 	
 	struct dmc_state* state = malloc(sizeof * state);
 	if (!state || !dmc_predictor_init(state))
@@ -397,7 +364,7 @@ bool file_save_dynamic_markov_model_func(FILE* file, const char* buf, int size)
 	{
 		for (int j = 0; j < BIT_COUNT; j++)
 		{
-			bool bit = (buf[i] << j) & 0x80;
+			bool bit = ((int)buf[i] << j) & 0x80;
 			mid = min + (max - min - 1) * dmc_predictor(state);
 			dmc_predictor_update(state, bit);
 			if (mid == min)
@@ -431,9 +398,9 @@ bool file_save_dynamic_markov_model_func(FILE* file, const char* buf, int size)
 	}
 
 	min = max - 1;
-	write_char(file, min & 0xFF);
+	write_char(file, min >> 16);
 	write_char(file, (min >> 8) & 0xFF);
-	write_char(file, (min >> 16) & 0xFF);
+	write_char(file, min & 0xFF);
 
 	free(state);
 	debug_format("Compressed file with Dynamic Markov Compression, in: %i, out: %i\n", in_bytes, out_bytes);

@@ -29,30 +29,30 @@ static bool load_config(void)
 	}
 	default_file = file_open(buf, file_open_plain_func);
 	user_t user;
-	bool result = false;
 	if (user_load(&user))
 	{
-		result = true;
-		file_save_t* last = LIST_GET(user.file_saves, 0, file_save_t);
-		if (last)
+		for (int i = 0; i < list_count(user.file_saves); i++)
 		{
-			file_type_t dir_type = file_extension_to_type(strrchr(last->directory, '.'));
-			file_details_t last_loaded = file_open(last->directory, file_type_to_open_func(dir_type));
-			if (!IS_BAD_DETAILS(last_loaded))
-			{
-				console_set_file_details(last_loaded);
-				console_move_cursor(console_adjust_cursor(last->cursor, 0, 0));
-			}
+			file_save_t* save = LIST_GET(user.file_saves, 0, file_save_t);
+			file_type_t dir_type = file_extension_to_type(strrchr(save->directory, '.'));
+			if (dir_type == TYPE_UNKNOWN)
+				continue;
+			file_details_t details = file_open(save->directory, file_type_to_open_func(dir_type));
+			if (IS_BAD_DETAILS(details))
+				continue;
+			console_set_file_details(details);
+			if (console_is_valid_cursor(save->cursor))
+				console_move_cursor(console_adjust_cursor(save->cursor, 0, 0));
+			else
+				debug_format("Invalid cursor placement saved to user file.\n");
+			return true;
 		}
-		else
-		{
-			console_set_file_details(default_file);
-			file_save_t save = { .cursor = (coords_t) { 0 }, .directory = default_file.directory };
-			if (!LIST_PUSH(user.file_saves, default_file))
-				result = false;
-		}
+		console_set_file_details(default_file);
+		file_save_t save = { .cursor = (coords_t) { 0 }, .directory = default_file.directory };
+		if (LIST_PUSH(user.file_saves, default_file))
+			return true;
 	}
-	return result;
+	return false;
 }
 
 int main(int argc, char** argv)

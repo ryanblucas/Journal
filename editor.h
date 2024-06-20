@@ -9,7 +9,7 @@
 
 #include "util.h"
 
-#define CHECK_FOR_NEWLINE(ch)		((ch) == '\n' || (ch) == '\r')
+#define CHECK_FOR_NEWLINE(ch)		((ch) == '\n')
 #define TAB_SIZE					4
 
 typedef struct coords
@@ -23,6 +23,8 @@ typedef struct line
 	list_t string;
 } line_t;
 
+/* creates valid list of lines */
+list_t editor_create_lines(void);
 /* frees lines' strings */
 void editor_destroy_lines(list_t lines);
 

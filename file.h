@@ -64,7 +64,7 @@ extern inline open_func_t file_type_to_open_func(file_type_t type)
 	case TYPE_PLAIN:
 		return file_open_plain_func;
 	case TYPE_COMPRESSED:
-		return file_open_plain_func; /* TEMP */
+		return file_open_dynamic_markov_model_func;
 	}
 	return NULL;
 }
@@ -76,7 +76,7 @@ extern inline save_func_t file_type_to_save_func(file_type_t type)
 	case TYPE_PLAIN:
 		return file_save_plain_func;
 	case TYPE_COMPRESSED:
-		return file_save_plain_func; /* TEMP */
+		return file_save_dynamic_markov_model_func;
 	}
 	return NULL;
 }

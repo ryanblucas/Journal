@@ -235,15 +235,11 @@ static bool console_create_interface(void)
 
 static bool console_create_editor(void)
 {
-	lines =			list_create(sizeof(line_t));
+	lines =			editor_create_lines();
 	actions =		list_create(sizeof(action_t));
 	undid_actions = list_create(sizeof(action_t));
 	if (lines != NULL && actions != NULL && undid_actions != NULL)
-	{
-		line_t line = (line_t){ .string = list_create(sizeof(char)) };
-		if (line.string != NULL && LIST_PUSH(lines, line))
-			return true;
-	}
+		return true;
 	list_destroy(undid_actions);
 	list_destroy(actions);
 	list_destroy(lines);
@@ -458,10 +454,14 @@ static bool console_handle_control_event(int ch, bool shifting)
 		list_t saves = user_get_latest().file_saves;
 		for (int i = 0; i < list_count(saves); i++)
 		{
-			if (strncmp(LIST_GET(saves, i, file_save_t)->directory, buf, MAX_PATH) == 0)
-				last_cursor = LIST_GET(saves, i, file_save_t)->cursor;
+			file_save_t* save = LIST_GET(saves, i, file_save_t);
+			if (strncmp(save->directory, buf, MAX_PATH) == 0)
+				last_cursor = save->cursor;
 		}
-		console_move_cursor(last_cursor);
+		if (console_is_valid_cursor(last_cursor))
+			console_move_cursor(last_cursor);
+		else
+			debug_format("Invalid cursor placement saved to user file.\n");
 		return true;
 
 	case 'S':

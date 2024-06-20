@@ -179,9 +179,13 @@ bool user_load(user_t* user)
 	}
 
 	if (has_cache)
-		user_unload(&cache);
+	{
+		user_unload_saves(cache.file_saves);
+		debug_format("Unloaded cached user\n");
+	}
 	has_cache = true;
 	cache = *user;
+	debug_format("Cached latest load request for user data\n");
 	return true;
 }
 
@@ -217,9 +221,13 @@ bool user_save(user_t user)
 	}
 	
 	if (has_cache && cache.file_saves != user.file_saves)
+	{
 		user_unload_saves(cache.file_saves);
+		debug_format("Unloaded cached user\n");
+	}
 	cache = user;
 	has_cache = true;
+	debug_format("Cached latest save for user data\n");
 	return true;
 }
 

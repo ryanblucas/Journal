@@ -12,6 +12,20 @@
 
 #define IS_LIST_VALID(lines)		(lines && list_element_size(lines) == sizeof(line_t))
 
+/* creates valid list of lines */
+list_t editor_create_lines(void)
+{
+	list_t result = list_create(sizeof(line_t));
+	line_t elem = (line_t){ .string = list_create(sizeof(char)) };
+	if (!result || !elem.string || !LIST_PUSH(result, elem))
+	{
+		list_destroy(result);
+		list_destroy(elem.string);
+		return NULL;
+	}
+	return result;
+}
+
 /* frees lines' strings */
 void editor_destroy_lines(list_t lines)
 {
@@ -72,7 +86,7 @@ bool editor_add_raw(list_t lines, const char* raw, coords_t* position)
 	int ch;
 	while (ch = *raw++)
 	{
-		if (ch == '\n')
+		if (CHECK_FOR_NEWLINE(ch))
 		{
 			editor_add_newline(lines, *position);
 			*position = (coords_t){ 0, position->row + 1 };
