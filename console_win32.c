@@ -36,6 +36,7 @@ static CHAR_INFO* buffer;
 static coords_t cursor, camera;
 static list_t lines;
 static char current_directory[MAX_PATH];
+static file_type_t current_type;
 
 static list_t actions;
 static list_t undid_actions;
@@ -131,6 +132,7 @@ void console_set_file_details(const file_details_t details)
 	DEBUG_ON_FAILURE(SetConsoleTitleA(title_buf));
 
 	strncpy(current_directory, details.directory, sizeof current_directory);
+	current_type = details.type;
 
 	selecting = false;
 }
@@ -466,22 +468,15 @@ static bool console_handle_control_event(int ch, bool shifting)
 
 	case 'S':
 		char* dir = current_directory;
-		if (!current_directory || shifting)
+		if (!dir || shifting)
 		{
 			dir = console_open_file_dialog(false);
 			if (!dir)
 				return true;
 		}
-		char* ext = strrchr(dir, '.');
-		file_type_t save_type = file_extension_to_type(ext);
-		if (save_type == TYPE_UNKNOWN)
-		{
-			debug_format("Unknown file extension passed, defaulting to plain.\n");
-			save_type = TYPE_PLAIN;
-		}
-		debug_format("Saving file \"%s\" with type %i.\n", dir, save_type);
+		debug_format("Saving file \"%s\" with type %i.\n", dir, current_type);
 		return DEBUG_ON_FAILURE(user_save_file((file_save_t) { .directory = dir, .cursor = cursor })) &&
-			DEBUG_ON_FAILURE(file_save((file_details_t) { .directory = dir, .lines = lines }, file_type_to_save_func(save_type)));
+			DEBUG_ON_FAILURE(file_save((file_details_t) { .directory = dir, .lines = lines }, current_type));
 	}
 	return true;
 }

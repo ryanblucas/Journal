@@ -18,6 +18,9 @@
 #define PLAIN_EXTENSION			".txt"
 #define EXTENSION_LEN			4
 
+static bool file_open_dynamic_markov_model(const char* buf, long size, list_t out);
+static bool file_save_dynamic_markov_model(FILE* file, const char* buf, int size);
+
 static char dmc_header[3] = { 0xDD, 0x17, 0xCC };
 
 /* does file exist */
@@ -51,20 +54,23 @@ bool file_get_type(const char* directory, file_type_t* type)
 	assert(directory != NULL && type);
 	FILE* file = fopen(directory, "rb");
 	char header[4];
-	if (!file || fread(header, 1, 4, file) != 4)
+	if (!file)
 		return false;
-	*type = TYPE_UNKNOWN;
+	bool read_all = fread(header, 1, 4, file) == 4;
+	fclose(file);
+	if (!read_all)
+		return false;
+
+	*type = TYPE_PLAIN;
 	if (memcmp(header, dmc_header, sizeof dmc_header) == 0)
 		*type = TYPE_COMPRESSED;
-	else
-		*type = TYPE_PLAIN;
 	return true;
 }
 
 /* determines type of file and then delegates open function to the appropriate function */
-file_details_t file_open(const char* directory, open_func_t func)
+file_details_t file_open(const char* directory, file_type_t type)
 {
-	assert(directory != NULL && func != NULL);
+	assert(directory != NULL);
 	FILE* file = fopen(directory, "rb");
 	if (!file)
 		return FAILED_FILE_DETAILS;
@@ -74,13 +80,20 @@ file_details_t file_open(const char* directory, open_func_t func)
 	if (!buf)
 		return FAILED_FILE_DETAILS;
 
-	list_t parsed = list_create(sizeof(char));
-	if (!parsed || !func(buf, size, parsed))
+	list_t parsed = list_create_with_array(buf, sizeof(char), size);
+	if (!parsed)
 	{
 		list_destroy(parsed);
 		free(buf);
 		return FAILED_FILE_DETAILS;
 	}
+	
+	if (type & TYPE_COMPRESSED)
+	{
+		list_clear(parsed);
+		file_open_dynamic_markov_model(buf, size, parsed);
+	}
+
 	free(buf);
 
 	list_t lines = editor_create_lines();
@@ -105,7 +118,7 @@ file_details_t file_open(const char* directory, open_func_t func)
 }
 
 /* saves console's file given user's current settings */
-bool file_save(const file_details_t details, save_func_t func)
+bool file_save(const file_details_t details, file_type_t type)
 {
 	assert(details.directory != NULL);
 	FILE* file = fopen(details.directory, "wb");
@@ -120,7 +133,14 @@ bool file_save(const file_details_t details, save_func_t func)
 		return false;
 	}
 
-	bool result = func(file, list_element_array(str), list_count(str));
+	bool result = false;
+	if (type != TYPE_COMPRESSED)
+	{
+		int countNoTerminator = list_count(str) - 1;
+		result = fwrite(list_element_array(str), 1, countNoTerminator, file) == countNoTerminator;
+	}
+	else
+		result = file_save_dynamic_markov_model(file, list_element_array(str), list_count(str));
 
 	fclose(file);
 	if (!result)
@@ -135,7 +155,7 @@ file_details_t file_determine_and_open(const char* directory)
 	file_type_t type;
 	if (!file_get_type(directory, &type))
 		return FAILED_FILE_DETAILS;
-	return file_open(directory, file_type_to_open_func(type));
+	return file_open(directory, type);
 }
 
 /* get file's extension given file type */
@@ -154,27 +174,9 @@ const char* file_type_to_extension(file_type_t type)
 /* returns type from extension */
 file_type_t file_extension_to_type(const char* ext)
 {
-	if (memcmp(ext, PLAIN_EXTENSION, EXTENSION_LEN) == 0)
-		return TYPE_PLAIN;
-	else if (memcmp(ext, DMC_EXTENSION, EXTENSION_LEN) == 0)
+	if (memcmp(ext, DMC_EXTENSION, EXTENSION_LEN) == 0)
 		return TYPE_COMPRESSED;
-	return TYPE_UNKNOWN;
-}
-
-bool file_open_plain_func(const char* buf, long size, list_t out)
-{
-	/* TO DO: check BOM */
-	list_t cpy = list_create_with_array(buf, sizeof(char), size);
-	if (!cpy)
-		return false;
-	bool result = list_concat(out, cpy, 0);
-	list_destroy(cpy);
-	return result;
-}
-
-bool file_save_plain_func(FILE* file, const char* src, int size)
-{
-	return fwrite(src, 1, size - 1, file) == (size - 1);
+	return TYPE_PLAIN;
 }
 
 /*	https://webhome.cs.uvic.ca/~nigelh/Publications/DMC.pd
@@ -210,8 +212,8 @@ static void dmc_predictor_braid(struct dmc_state* state)
 		/* 1-7th bit */
 		for (int i = 0; i < 127; i++)
 		{
-			state->nodes[j][i].count[0] = 0.2;
-			state->nodes[j][i].count[1] = 0.2;
+			state->nodes[j][i].count[0] = 0.2F;
+			state->nodes[j][i].count[1] = 0.2F;
 			state->nodes[j][i].next[0] = &state->nodes[j][2 * i + 1];
 			state->nodes[j][i].next[1] = &state->nodes[j][2 * i + 2];
 		}
@@ -219,8 +221,8 @@ static void dmc_predictor_braid(struct dmc_state* state)
 		/* 8th bit */
 		for (int i = 127; i < 255; i++)
 		{
-			state->nodes[j][i].count[0] = 0.2;
-			state->nodes[j][i].count[1] = 0.2;
+			state->nodes[j][i].count[0] = 0.2F;
+			state->nodes[j][i].count[1] = 0.2F;
 			state->nodes[j][i].next[0] = &state->nodes[i + 1][0];
 			state->nodes[j][i].next[1] = &state->nodes[i - 127][0];
 		}
@@ -272,7 +274,7 @@ static void dmc_predictor_update(struct dmc_state* state, bool bit)
 	}
 }
 
-bool file_open_dynamic_markov_model_func(const char* buf, long size, list_t out)
+static bool file_open_dynamic_markov_model(const char* buf, long size, list_t out)
 {
 	assert(buf && size > 0 && out && list_element_size(out) == sizeof(char));
 	if (size < 6)
@@ -341,7 +343,7 @@ bool file_open_dynamic_markov_model_func(const char* buf, long size, list_t out)
 	return true;
 }
 
-bool file_save_dynamic_markov_model_func(FILE* file, const char* buf, int size)
+static bool file_save_dynamic_markov_model(FILE* file, const char* buf, int size)
 {
 	assert(file && buf && size > 0);
 	

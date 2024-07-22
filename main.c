@@ -27,7 +27,7 @@ static bool load_config(void)
 		if (temp)
 			fclose(temp);
 	}
-	default_file = file_open(buf, file_open_plain_func);
+	default_file = file_open(buf, TYPE_PLAIN);
 	user_t user;
 	if (user_load(&user))
 	{
@@ -35,21 +35,22 @@ static bool load_config(void)
 		{
 			file_save_t* save = LIST_GET(user.file_saves, 0, file_save_t);
 			file_type_t dir_type = file_extension_to_type(strrchr(save->directory, '.'));
-			if (dir_type == TYPE_UNKNOWN)
-				continue;
-			file_details_t details = file_open(save->directory, file_type_to_open_func(dir_type));
+			file_details_t details = file_open(save->directory, dir_type);
 			if (IS_BAD_DETAILS(details))
 				continue;
 			console_set_file_details(details);
 			if (console_is_valid_cursor(save->cursor))
 				console_move_cursor(console_adjust_cursor(save->cursor, 0, 0));
 			else
+			{
 				debug_format("Invalid cursor placement saved to user file.\n");
+				continue;
+			}
 			return true;
 		}
 		console_set_file_details(default_file);
 		file_save_t save = { .cursor = (coords_t) { 0 }, .directory = default_file.directory };
-		if (LIST_PUSH(user.file_saves, default_file))
+		if (LIST_PUSH(user.file_saves, save))
 			return true;
 	}
 	return false;

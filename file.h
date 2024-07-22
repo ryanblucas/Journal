@@ -15,26 +15,17 @@
 
 typedef enum file_type
 {
-	TYPE_UNKNOWN,
-	TYPE_PLAIN,
-	TYPE_COMPRESSED,
+	TYPE_PLAIN =		0x00,
+	TYPE_COMPRESSED =	0x01,
+	TYPE_ENCRYPTED =	0x02
 } file_type_t;
 
 typedef struct file_details
 {
 	const char* directory;
+	file_type_t type;
 	list_t lines;
 } file_details_t;
-
-/* open_func_t(raw buffer straight from disk, size of raw buffer) returns success or failure */
-typedef bool (*open_func_t)(const char*, long, list_t);
-bool file_open_plain_func(const char* buf, long size, list_t out);
-bool file_open_dynamic_markov_model_func(const char* buf, long size, list_t out);
-
-/* save_func_t(file, raw buffer, size of buffer) returns success or failure, func clears file for you on failure */
-typedef bool (*save_func_t)(FILE*, const char*, int);
-bool file_save_plain_func(FILE* file, const char* src, int size);
-bool file_save_dynamic_markov_model_func(FILE* file, const char* buf, int size);
 
 /* does file exist */
 bool file_exists(const char* directory);
@@ -44,9 +35,9 @@ bool file_get_name(const char* directory, char* buf, int size);
 bool file_get_type(const char* directory, file_type_t* type);
 
 /* opens file using function */
-file_details_t file_open(const char* directory, open_func_t func);
+file_details_t file_open(const char* directory, file_type_t type);
 /* saves file using function */
-bool file_save(const file_details_t details, save_func_t func);
+bool file_save(const file_details_t details, file_type_t type);
 /* determines type of file to open */
 file_details_t file_determine_and_open(const char* directory);
 
@@ -54,29 +45,3 @@ file_details_t file_determine_and_open(const char* directory);
 const char* file_type_to_extension(file_type_t type);
 /* returns type from extension */
 file_type_t file_extension_to_type(const char* ext);
-
-/* TO DO: Macro */
-
-extern inline open_func_t file_type_to_open_func(file_type_t type)
-{
-	switch (type)
-	{
-	case TYPE_PLAIN:
-		return file_open_plain_func;
-	case TYPE_COMPRESSED:
-		return file_open_dynamic_markov_model_func;
-	}
-	return NULL;
-}
-
-extern inline save_func_t file_type_to_save_func(file_type_t type)
-{
-	switch (type)
-	{
-	case TYPE_PLAIN:
-		return file_save_plain_func;
-	case TYPE_COMPRESSED:
-		return file_save_dynamic_markov_model_func;
-	}
-	return NULL;
-}

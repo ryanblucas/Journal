@@ -6,6 +6,5 @@ Architecture
     Action strings aren't really gonna be freed, so they should all be in a contiguous piece of memory
 
 Features
-    Error handling is 
-    Fix DMC compression
+    Error handling
     RSA file encryption

@@ -120,8 +120,7 @@ static list_t user_load_saves(const char* state, long pos, long size)
 			start = i + INT_SIZE * 2;
 			read_int(state, i, size, &current.cursor.column);
 			read_int(state, i + INT_SIZE, size, &current.cursor.row);
-			file_type_t type;
-			if (file_get_type(current.directory, &type) && type != TYPE_UNKNOWN && !LIST_PUSH(result, current))
+			if (!LIST_PUSH(result, current))
 			{
 				user_unload_saves(result);
 				return NULL;
