@@ -255,6 +255,10 @@ file_type_t file_extension_to_type(const char* ext)
 	return res;
 }
 
+/*	https://github.com/m3y54m/aes-in-c
+	https://en.wikipedia.org/wiki/Rijndael_MixColumns
+	https://en.wikipedia.org/wiki/Finite_field_arithmetic#Rijndael's_(AES)_finite_field */
+
 /* KEY_SIZE can be 16, 24, or 32. 16 is the only tested constant. */
 #define KEY_SIZE		16
 #define EXP_KEY_SIZE	176
@@ -322,12 +326,23 @@ static uint8_t aes_rcon[] =
 	0x61, 0xC2, 0x9F, 0x25, 0x4A, 0x94, 0x33, 0x66, 0xCC, 0x83, 0x1D, 0x3A, 0x74, 0xE8, 0xCB
 };
 
-static inline void aes_rotate(uint8_t word[4])
+static uint8_t aes_mix_vector[4] = { 2, 3, 1, 1 };
+static uint8_t aes_mix_inv_vector[4] = { 14, 11, 13, 9 };
+
+static inline void aes_rotate_left(uint8_t word[4])
 {
 	uint8_t temp = word[0];
 	for (int i = 0; i < 3; i++)
 		word[i] = word[i + 1];
 	word[3] = temp;
+}
+
+static inline void aes_rotate_right(uint8_t word[4])
+{
+	uint8_t temp = word[3];
+	for (int i = 3; i > 0; i--)
+		word[i] = word[i - 1];
+	word[0] = temp;
 }
 
 static void aes_expand_key(uint8_t key[KEY_SIZE], uint8_t expanded_key[EXP_KEY_SIZE])
@@ -345,7 +360,7 @@ static void aes_expand_key(uint8_t key[KEY_SIZE], uint8_t expanded_key[EXP_KEY_S
 
 		if (pos % KEY_SIZE == 0)
 		{
-			aes_rotate(temp);
+			aes_rotate_left(temp);
 			for (int i = 0; i < 4; i++)
 				temp[i] = aes_sbox[i];
 			temp[0] ^= aes_rcon[rcon_i++];
@@ -381,12 +396,21 @@ static inline void aes_substitute_bytes(uint8_t state[STATE_SIZE], uint8_t sbox[
 		state[i] = sbox[i];
 }
 
-static inline void aes_shift_rows(uint8_t state[STATE_SIZE])
+static inline void aes_shift_rows_left(uint8_t state[STATE_SIZE])
 {
 	for (int i = 1; i < 4; i++) /* i = 1 because the first row is never shifted */
 	{
 		for (int j = 0; j < i; j++)
-			aes_rotate(state + i * 4);
+			aes_rotate_left(state + i * 4);
+	}
+}
+
+static inline void aes_shift_rows_right(uint8_t state[STATE_SIZE])
+{
+	for (int i = 1; i < 4; i++) /* i = 1 because the first row is never shifted */
+	{
+		for (int j = 0; j < i; j++)
+			aes_rotate_right(state + i * 4);
 	}
 }
 
@@ -396,7 +420,21 @@ static inline void aes_add_round_key(uint8_t state[STATE_SIZE], uint8_t round_ke
 		state[i] ^= round_key[i];
 }
 
-static inline void aes_mix_columns(uint8_t state[STATE_SIZE])
+/* 
+	the multiplication matrix for mixing columns is either:
+		2 3 1 1
+		1 2 3 1
+		1 1 2 3
+		3 1 1 2
+	or the inverse:
+		14 11 13 09
+		09 14 11 13
+		13 09 14 11
+		11 13 09 14
+	Since each row is the the one before it shifted right, 
+	we can just pass a vector in instead of the whole matrix
+*/
+static inline void aes_mix_columns(uint8_t state[STATE_SIZE], uint8_t vector[4])
 {
 	for (int i = 0; i < 4; i++)
 	{
@@ -407,10 +445,10 @@ static inline void aes_mix_columns(uint8_t state[STATE_SIZE])
 		for (int j = 0; j < 4; j++)
 		{
 			state[j * 4 + i] =
-				aes_galois_multiply(col_cpy[j], 2)
-				^ aes_galois_multiply(col_cpy[(j + 3) % 4], 1)
-				^ aes_galois_multiply(col_cpy[(j + 2) % 4], 1)
-				^ aes_galois_multiply(col_cpy[(j + 1) % 4], 3);
+				aes_galois_multiply(col_cpy[j], vector[0])
+				^ aes_galois_multiply(col_cpy[(j + 3) % 4], vector[3])
+				^ aes_galois_multiply(col_cpy[(j + 2) % 4], vector[2])
+				^ aes_galois_multiply(col_cpy[(j + 1) % 4], vector[1]);
 		}
 	}
 }
@@ -442,17 +480,18 @@ static void aes_encrypt_chunk(uint8_t input[STATE_SIZE], uint8_t output[STATE_SI
 
 	for (int i = 1; i < 10; i++)
 	{
-		aes_create_round_key(exp_key + 16 * i, round_key);
+		aes_create_round_key(exp_key + KEY_SIZE * i, round_key);
 
 		aes_substitute_bytes(state, aes_sbox);
-		aes_shift_rows(state);
-		aes_mix_columns(state);
+		aes_shift_rows_left(state);
+		aes_mix_columns(state, aes_mix_vector);
 		aes_add_round_key(state, round_key);
 	}
 
-	aes_create_round_key(exp_key + 160, round_key);
+	aes_create_round_key(exp_key + KEY_SIZE * ROUND_COUNT, round_key);
+
 	aes_substitute_bytes(state, aes_sbox);
-	aes_shift_rows(state);
+	aes_shift_rows_left(state);
 	aes_add_round_key(state, round_key);
 
 	for (int i = 0; i < 4; i++)
@@ -460,6 +499,39 @@ static void aes_encrypt_chunk(uint8_t input[STATE_SIZE], uint8_t output[STATE_SI
 		for (int j = 0; j < 4; j++)
 			output[i * 4 + j] = state[i + j * 4];
 	}
+}
+
+static void aes_decrypt_chunk(uint8_t input[STATE_SIZE], uint8_t output[STATE_SIZE], uint8_t key[KEY_SIZE])
+{
+	uint8_t exp_key[EXP_KEY_SIZE];
+	aes_expand_key(key, exp_key);
+
+	uint8_t state[STATE_SIZE];
+	for (int i = 0; i < 4; i++)
+	{
+		for (int j = 0; j < 4; j++)
+			state[i + j * 4] = input[i * 4 + j];
+	}
+
+	uint8_t round_key[STATE_SIZE];
+	aes_create_round_key(exp_key + ROUND_COUNT * KEY_SIZE, round_key);
+	aes_add_round_key(state, round_key);
+
+	for (int i = ROUND_COUNT - 1; i > 0; i--)
+	{
+		aes_create_round_key(exp_key + KEY_SIZE * i, round_key);
+
+		aes_shift_rows_right(state);
+		aes_substitute_bytes(state, aes_sbox_invert);
+		aes_add_round_key(state, round_key);
+		aes_mix_columns(state, aes_mix_inv_vector);
+	}
+
+	aes_create_round_key(exp_key, round_key);
+
+	aes_shift_rows_right(state);
+	aes_substitute_bytes(state, aes_sbox_invert);
+	aes_add_round_key(state, round_key);
 }
 
 static bool aes_open(const list_t in, list_t out)
