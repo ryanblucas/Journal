@@ -7,4 +7,4 @@ Architecture
 
 Features
     Error handling
-    RSA file encryption
+    AES file encryption
