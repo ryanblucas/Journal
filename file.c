@@ -323,7 +323,7 @@ static inline void aes_rotate(uint8_t word[4])
 	word[3] = temp;
 }
 
-static void aes_expand_key(uint8_t key[8], uint8_t expanded_key[176])
+static void aes_expand_key(uint8_t key[16], uint8_t expanded_key[176])
 {
 	for (int i = 0; i < sizeof key; i++)
 		expanded_key[i] = key[i];
