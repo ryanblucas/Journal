@@ -255,6 +255,13 @@ file_type_t file_extension_to_type(const char* ext)
 	return res;
 }
 
+/* KEY_SIZE can be 16, 24, or 32. 16 is the only tested constant. */
+#define KEY_SIZE		16
+#define EXP_KEY_SIZE	176
+#define STATE_SIZE		16 /* state is a 4x4 matrix, row-major */
+/* from "The Design of Rjindael:" "For Rijndael versions with a longer key, the number of rounds was raised by one for every additional 32 bits in the cipher key." */
+#define ROUND_COUNT		(6 + (KEY_SIZE / 4))
+
 static uint8_t aes_sbox[] =
 {
 	0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
@@ -323,20 +330,20 @@ static inline void aes_rotate(uint8_t word[4])
 	word[3] = temp;
 }
 
-static void aes_expand_key(uint8_t key[16], uint8_t expanded_key[176])
+static void aes_expand_key(uint8_t key[KEY_SIZE], uint8_t expanded_key[EXP_KEY_SIZE])
 {
-	for (int i = 0; i < sizeof key; i++)
+	for (int i = 0; i < KEY_SIZE; i++)
 		expanded_key[i] = key[i];
 
-	int pos = sizeof key,
+	int pos = KEY_SIZE,
 		rcon_i = 1;
-	while (pos < sizeof expanded_key)
+	while (pos < EXP_KEY_SIZE)
 	{
 		uint8_t temp[4];
 		for (int i = 0; i < 4; i++)
 			temp[i] = expanded_key[(pos - 4) + i];
 
-		if (pos % sizeof key == 0)
+		if (pos % KEY_SIZE == 0)
 		{
 			aes_rotate(temp);
 			for (int i = 0; i < 4; i++)
@@ -346,7 +353,7 @@ static void aes_expand_key(uint8_t key[16], uint8_t expanded_key[176])
 
 		for (int i = 0; i < 4; i++)
 		{
-			expanded_key[pos] = expanded_key[pos - sizeof key] ^ temp[i];
+			expanded_key[pos] = expanded_key[pos - KEY_SIZE] ^ temp[i];
 			pos++;
 		}
 	}
@@ -368,28 +375,28 @@ static uint8_t aes_galois_multiply(uint8_t a, uint8_t b)
 	return p;
 }
 
-static inline void aes_substitute_bytes(uint8_t state[16])
+static inline void aes_substitute_bytes(uint8_t state[STATE_SIZE], uint8_t sbox[sizeof aes_sbox])
 {
-	for (int i = 0; i < sizeof state; i++)
-		state[i] = aes_sbox[i];
+	for (int i = 0; i < STATE_SIZE; i++)
+		state[i] = sbox[i];
 }
 
-static inline void aes_shift_rows(uint8_t state[16])
+static inline void aes_shift_rows(uint8_t state[STATE_SIZE])
 {
-	for (int i = 1; i < 4; i++)
+	for (int i = 1; i < 4; i++) /* i = 1 because the first row is never shifted */
 	{
 		for (int j = 0; j < i; j++)
 			aes_rotate(state + i * 4);
 	}
 }
 
-static inline void aes_add_round_key(uint8_t state[16], uint8_t key[16])
+static inline void aes_add_round_key(uint8_t state[STATE_SIZE], uint8_t round_key[STATE_SIZE])
 {
-	for (int i = 0; i < 16; i++)
-		state[i] ^= key[i];
+	for (int i = 0; i < STATE_SIZE; i++)
+		state[i] ^= round_key[i];
 }
 
-static inline void aes_mix_columns(uint8_t state[16])
+static inline void aes_mix_columns(uint8_t state[STATE_SIZE])
 {
 	for (int i = 0; i < 4; i++)
 	{
@@ -405,6 +412,53 @@ static inline void aes_mix_columns(uint8_t state[16])
 				^ aes_galois_multiply(col_cpy[(j + 2) % 4], 1)
 				^ aes_galois_multiply(col_cpy[(j + 1) % 4], 3);
 		}
+	}
+}
+
+static inline void aes_create_round_key(uint8_t exp_key_section[KEY_SIZE], uint8_t out_key[KEY_SIZE])
+{
+	for (int i = 0; i < 4; i++)
+	{
+		for (int j = 0; j < 4; j++)
+			out_key[i + j * 4] = exp_key_section[i * 4 + j];
+	}
+}
+
+static void aes_encrypt_chunk(uint8_t input[STATE_SIZE], uint8_t output[STATE_SIZE], uint8_t key[KEY_SIZE])
+{
+	uint8_t exp_key[EXP_KEY_SIZE];
+	aes_expand_key(key, exp_key);
+
+	uint8_t state[STATE_SIZE];
+	for (int i = 0; i < 4; i++)
+	{
+		for (int j = 0; j < 4; j++)
+			state[i + j * 4] = input[i * 4 + j];
+	}
+
+	uint8_t round_key[STATE_SIZE];
+	aes_create_round_key(exp_key, round_key);
+	aes_add_round_key(state, round_key);
+
+	for (int i = 1; i < 10; i++)
+	{
+		aes_create_round_key(exp_key + 16 * i, round_key);
+
+		aes_substitute_bytes(state, aes_sbox);
+		aes_shift_rows(state);
+		aes_mix_columns(state);
+		aes_add_round_key(state, round_key);
+	}
+
+	aes_create_round_key(exp_key + 160, round_key);
+	aes_substitute_bytes(state, aes_sbox);
+	aes_shift_rows(state);
+	aes_add_round_key(state, round_key);
+
+	for (int i = 0; i < 4; i++)
+	{
+		for (int j = 0; j < 4; j++)
+			output[i * 4 + j] = state[i + j * 4];
 	}
 }
 
