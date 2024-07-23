@@ -14,14 +14,32 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define AES_EXTENSION			".aes"
 #define DMC_EXTENSION			".dmc"
 #define PLAIN_EXTENSION			".txt"
 #define EXTENSION_LEN			4
 
-static bool file_open_dynamic_markov_model(const char* buf, long size, list_t out);
-static bool file_save_dynamic_markov_model(FILE* file, const char* buf, int size);
+static bool aes_open(const list_t in, list_t out);
+static bool aes_save(const list_t in, list_t out);
+static bool dmc_open(const list_t in, list_t out);
+static bool dmc_save(const list_t in, list_t out);
 
+static char aes_header[3] = { 0xAA, 0xEE, 0x17 };
 static char dmc_header[3] = { 0xDD, 0x17, 0xCC };
+static char* user_password;
+
+/* sets password with a max len of 64 */
+bool file_set_password(const char* password)
+{
+	if (!user_password)
+	{
+		user_password = malloc(64);
+		if (!user_password)
+			return false;
+	}
+	strncpy(user_password, password, 64);
+	return true;
+}
 
 /* does file exist */
 bool file_exists(const char* directory)
@@ -80,35 +98,50 @@ file_details_t file_open(const char* directory, file_type_t type)
 	if (!buf)
 		return FAILED_FILE_DETAILS;
 
-	list_t parsed = list_create_with_array(buf, sizeof(char), size);
-	if (!parsed)
-	{
-		list_destroy(parsed);
-		free(buf);
+	list_t current = list_create_with_array(buf, sizeof(char), size);
+	free(buf);
+	if (!current)
 		return FAILED_FILE_DETAILS;
-	}
 	
-	if (type & TYPE_COMPRESSED)
+	if (type & TYPE_ENCRYPTED)
 	{
-		list_clear(parsed);
-		file_open_dynamic_markov_model(buf, size, parsed);
+		list_t next = list_create(sizeof(char));
+		if (!next || !aes_open(current, next))
+		{
+			list_destroy(next);
+			list_destroy(current);
+			return FAILED_FILE_DETAILS;
+		}
+		list_destroy(current);
+		current = next;
 	}
 
-	free(buf);
+	if (type & TYPE_COMPRESSED)
+	{
+		list_t next = list_create(sizeof(char));
+		if (!next || !dmc_open(current, next))
+		{
+			list_destroy(next);
+			list_destroy(current);
+			return FAILED_FILE_DETAILS;
+		}
+		list_destroy(current);
+		current = next;
+	}
 
 	list_t lines = editor_create_lines();
 	if (!lines)
 	{
-		list_destroy(parsed);
+		list_destroy(current);
 		return FAILED_FILE_DETAILS;
 	}
 
 	coords_t temp = { 0 };
-	bool result = editor_format_raw(parsed)
-		&& list_push_primitive(parsed, (void*)'\0')
-		&& editor_add_raw(lines, list_element_array(parsed), &temp);
+	bool result = editor_format_raw(current)
+		&& list_push_primitive(current, (void*)'\0')
+		&& editor_add_raw(lines, list_element_array(current), &temp);
 
-	list_destroy(parsed);
+	list_destroy(current);
 	if (!result)
 	{
 		editor_destroy_lines(lines);
@@ -125,28 +158,46 @@ bool file_save(const file_details_t details, file_type_t type)
 	if (!file)
 		return false;
 
-	list_t str = list_create(sizeof(char));
-	if (!str || !editor_copy_all_lines(details.lines, str))
+	list_t current = list_create(sizeof(char));
+	if (!current || !editor_copy_all_lines(details.lines, current))
 	{
-		list_destroy(str);
+		list_destroy(current);
 		fclose(file);
 		return false;
 	}
 
-	bool result = false;
-	if (type != TYPE_COMPRESSED)
+	list_pop(current, NULL);
+
+	if (type & TYPE_COMPRESSED)
 	{
-		int countNoTerminator = list_count(str) - 1;
-		result = fwrite(list_element_array(str), 1, countNoTerminator, file) == countNoTerminator;
+		list_t next = list_create(sizeof(char));
+		if (!next || !dmc_save(current, next))
+		{
+			list_destroy(current);
+			fclose(file);
+			clear_file(details.directory);
+			return false;
+		}
+		current = next;
 	}
-	else
-		result = file_save_dynamic_markov_model(file, list_element_array(str), list_count(str));
+	if (type & TYPE_ENCRYPTED)
+	{
+		list_t next = list_create(sizeof(char));
+		if (!next || !aes_save(current, next))
+		{
+			list_destroy(current);
+			fclose(file);
+			clear_file(details.directory);
+			return false;
+		}
+		current = next;
+	}
+
+	fwrite(list_element_array(current), 1, list_count(current), file);
 
 	fclose(file);
-	if (!result)
-		clear_file(details.directory);
-	list_destroy(str);
-	return result;
+	list_destroy(current);
+	return true;
 }
 
 /* determines type of file to open */
@@ -163,20 +214,57 @@ const char* file_type_to_extension(file_type_t type)
 {
 	switch (type)
 	{
-	case TYPE_PLAIN:
-		return PLAIN_EXTENSION;
 	case TYPE_COMPRESSED:
 		return DMC_EXTENSION;
+	case TYPE_ENCRYPTED:
+		return AES_EXTENSION;
+	case TYPE_COMPRESSED | TYPE_ENCRYPTED:
+		return DMC_EXTENSION AES_EXTENSION;
 	}
-	return NULL;
+	return PLAIN_EXTENSION;
 }
 
-/* returns type from extension */
+/* returns type from extension. You can also pass a file directory in */
 file_type_t file_extension_to_type(const char* ext)
 {
-	if (memcmp(ext, DMC_EXTENSION, EXTENSION_LEN) == 0)
-		return TYPE_COMPRESSED;
-	return TYPE_PLAIN;
+	const char* prev_last = NULL, *last = ext;
+	while (*ext++)
+	{
+		if (*ext == '.')
+		{
+			prev_last = last;
+			last = ext;
+		}
+	}
+
+	file_type_t res = TYPE_PLAIN;
+
+	if (memcmp(last, DMC_EXTENSION, EXTENSION_LEN) == 0)
+		res |= TYPE_COMPRESSED;
+	else if (memcmp(last, AES_EXTENSION, EXTENSION_LEN) == 0)
+		res |= TYPE_ENCRYPTED;
+	
+	if (!prev_last)
+		return res;
+
+	if (memcmp(prev_last, DMC_EXTENSION, EXTENSION_LEN) == 0)
+		res |= TYPE_COMPRESSED;
+	else if (memcmp(prev_last, AES_EXTENSION, EXTENSION_LEN) == 0)
+		res |= TYPE_ENCRYPTED;
+
+	return res;
+}
+
+static bool aes_open(const list_t in, list_t out)
+{
+	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
+	return false;
+}
+
+static bool aes_save(const list_t in, list_t out)
+{
+	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
+	return false;
 }
 
 /*	https://webhome.cs.uvic.ca/~nigelh/Publications/DMC.pd
@@ -274,9 +362,15 @@ static void dmc_predictor_update(struct dmc_state* state, bool bit)
 	}
 }
 
-static bool file_open_dynamic_markov_model(const char* buf, long size, list_t out)
+#undef max
+#undef min
+
+static bool dmc_open(const list_t in, list_t out)
 {
-	assert(buf && size > 0 && out && list_element_size(out) == sizeof(char));
+	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
+	
+	int size = list_count(in);
+	const char* buf = list_element_array(in);
 	if (size < 6)
 		return false;
 
@@ -301,7 +395,7 @@ static bool file_open_dynamic_markov_model(const char* buf, long size, list_t ou
 		int ch = 0;
 		for (int j = 0; j < 8; j++)
 		{
-			mid = min + (max - min - 1) * dmc_predictor(state);
+			mid = (int)(min + (max - min - 1) * dmc_predictor(state));
 			if (mid == min)
 				mid++;
 			if (mid == (max - 1))
@@ -343,11 +437,17 @@ static bool file_open_dynamic_markov_model(const char* buf, long size, list_t ou
 	return true;
 }
 
-static bool file_save_dynamic_markov_model(FILE* file, const char* buf, int size)
+static bool dmc_save(const list_t in, list_t out)
 {
-	assert(file && buf && size > 0);
-	
-	fwrite(dmc_header, 1, 3, file);
+	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
+
+	int size = list_count(in);
+	const char* buf = list_element_array(in);
+
+	if (!LIST_PUSH(out, dmc_header[0])
+		|| !LIST_PUSH(out, dmc_header[1])
+		|| !LIST_PUSH(out, dmc_header[2]))
+		return false;
 	
 	struct dmc_state* state = malloc(sizeof * state);
 	if (!state || !dmc_predictor_init(state))
@@ -367,7 +467,7 @@ static bool file_save_dynamic_markov_model(FILE* file, const char* buf, int size
 		for (int j = 0; j < BIT_COUNT; j++)
 		{
 			bool bit = ((int)buf[i] << j) & 0x80;
-			mid = min + (max - min - 1) * dmc_predictor(state);
+			mid = (int)(min + (max - min - 1) * dmc_predictor(state));
 			dmc_predictor_update(state, bit);
 			if (mid == min)
 				mid++;
@@ -382,7 +482,11 @@ static bool file_save_dynamic_markov_model(FILE* file, const char* buf, int size
 			{
 				if (bit)
 					max--;
-				write_char(file, min >> 16);
+				if (!list_push_primitive(out, (void*)(min >> 16)))
+				{
+					free(state);
+					return false;
+				}
 				out_bytes++;
 				min = (min << 8) & 0xFFFF00;
 				max = (max << 8) & 0xFFFF00;
@@ -400,11 +504,12 @@ static bool file_save_dynamic_markov_model(FILE* file, const char* buf, int size
 	}
 
 	min = max - 1;
-	write_char(file, min >> 16);
-	write_char(file, (min >> 8) & 0xFF);
-	write_char(file, min & 0xFF);
+	bool result = list_push_primitive(out, (void*)(min >> 16))
+		&& list_push_primitive(out, (void*)((min >> 8) & 0xFF))
+		&& list_push_primitive(out, (void*)(min & 0xFF));
 
 	free(state);
-	debug_format("Compressed file with Dynamic Markov Compression, in: %i, out: %i\n", in_bytes, out_bytes);
-	return true;
+	if (result)
+		debug_format("Compressed file with Dynamic Markov Compression, in: %i, out: %i\n", in_bytes, out_bytes);
+	return result;
 }

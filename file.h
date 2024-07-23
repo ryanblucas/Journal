@@ -27,6 +27,9 @@ typedef struct file_details
 	list_t lines;
 } file_details_t;
 
+/* sets password with a max len of 64 */
+bool file_set_password(const char* password);
+
 /* does file exist */
 bool file_exists(const char* directory);
 /* gets just the name of a file, no directory */
@@ -43,5 +46,5 @@ file_details_t file_determine_and_open(const char* directory);
 
 /* get file's extension given file type */
 const char* file_type_to_extension(file_type_t type);
-/* returns type from extension */
+/* returns type from extension. You can also pass a file directory in */
 file_type_t file_extension_to_type(const char* ext);

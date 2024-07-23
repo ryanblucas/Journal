@@ -165,9 +165,9 @@ bool user_load(user_t* user)
 		return false;
 
 	bool success = size > 0
-		&& read_int(state, 0, size, &user->foreground) 
-		&& read_int(state, INT_SIZE, size, &user->background)
-		&& read_int(state, INT_SIZE * 2, size, &user->desired_save_type)
+		&& read_int(state, 0, size, (int*)&user->foreground)
+		&& read_int(state, INT_SIZE, size, (int*)&user->background)
+		&& read_int(state, INT_SIZE * 2, size, (int*)&user->desired_save_type)
 		&& (user->file_saves = user_load_saves(state, INT_SIZE * 3, size));
 	
 	free(state);
