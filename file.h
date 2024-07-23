@@ -6,6 +6,8 @@
 
 #pragma once
 
+#define TEST
+
 #include "editor.h"
 #include <stdbool.h>
 #include "util.h"

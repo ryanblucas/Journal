@@ -534,6 +534,45 @@ static void aes_decrypt_chunk(uint8_t input[STATE_SIZE], uint8_t output[STATE_SI
 	aes_add_round_key(state, round_key);
 }
 
+#ifdef TEST
+
+#include <Windows.h>
+
+/* current AES encryption as of 7-23-24 can do this many a second. */
+#define TEST_COUNT 0x8000
+
+static int aes_test(void)
+{
+	uint8_t input[16], output[16], decrypt[16], key[16];
+	for (int i = 0; i < 16; i++)
+	{
+		input[i] = rand();
+		key[i] = rand();
+	}
+
+	aes_encrypt_chunk(input, output, key);
+	aes_decrypt_chunk(output, decrypt, key);
+	return memcmp(input, decrypt, STATE_SIZE);
+}
+
+int main()
+{
+	LARGE_INTEGER freq, start, end;
+	QueryPerformanceFrequency(&freq);
+
+	QueryPerformanceCounter(&start);
+	srand(start.QuadPart);
+
+	int i;
+	QueryPerformanceCounter(&start);
+	for (i = 0; i < TEST_COUNT && aes_test() != 0; i++);
+	QueryPerformanceCounter(&end);
+
+	printf("Passed %i tests out of %i in %fs.\n", i, TEST_COUNT, (end.QuadPart - start.QuadPart) / (double)freq.QuadPart);
+}
+
+#endif
+
 static bool aes_open(const list_t in, list_t out)
 {
 	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
