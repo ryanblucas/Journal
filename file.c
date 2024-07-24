@@ -534,6 +534,81 @@ static void aes_decrypt_chunk(uint8_t input[STATE_SIZE], uint8_t output[STATE_SI
 	aes_add_round_key(state, round_key);
 }
 
+static bool aes_open(const list_t in, list_t out)
+{
+	return false; /* NOT FULLY IMPLEMENTED! see TO DO below */
+
+	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
+	int size = list_count(in);
+	uint8_t* buf = list_element_array(in);
+	if (size < EXTENSION_LEN + 32)
+		return false;
+
+	if (memcmp(buf, AES_EXTENSION, EXTENSION_LEN) != 0)
+		return false;
+
+	/*	TO DO: add PBKDF2, SHA-256, and a cryptographically secure PRNG implementation.
+		Create key from PBKDF2 using SHA-256 and the PRNG. Save that key somehow (hash it)
+		and verify if the current password is valid for the file being opened. */
+	uint8_t key[16];
+
+	int chunk_count = (size - 19) / STATE_SIZE + 1;
+	for (int i = 20; i < chunk_count * STATE_SIZE; i += STATE_SIZE)
+	{
+		int curr_chunk_size = min(STATE_SIZE, size - i);
+		if (!curr_chunk_size)
+			break;
+
+		uint8_t chunk[16] = { 0 }, output[16];
+		memcpy(chunk, buf + i, curr_chunk_size);
+		aes_decrypt_chunk(chunk, output, key);
+		for (int j = 0; j < curr_chunk_size; j++)
+		{
+			if (!LIST_PUSH(out, output[j]))
+				return false;
+		}
+	}
+	return true;
+}
+
+static bool aes_save(const list_t in, list_t out)
+{
+	return false; /* NOT FULLY IMPLEMENTED! see TO DO above in aes_open */
+
+	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
+	
+	if (!LIST_PUSH(out, aes_header[0])
+		|| !LIST_PUSH(out, aes_header[1])
+		|| !LIST_PUSH(out, aes_header[2]))
+	{
+		return false;
+	}
+
+	/* TO DO: see above, and save this hashed result. */
+	uint8_t key[16];
+
+	int size = list_count(in);
+	uint8_t* buf = list_element_array(in);
+
+	int chunk_count = list_count(in) / STATE_SIZE + 1;
+	for (int i = 0; i < chunk_count * STATE_SIZE; i += STATE_SIZE)
+	{
+		int curr_chunk_size = min(STATE_SIZE, size - i);
+		if (!curr_chunk_size)
+			break;
+
+		uint8_t chunk[16] = { 0 }, output[16];
+		memcpy(chunk, buf + i, curr_chunk_size);
+		aes_encrypt_chunk(chunk, output, key);
+		for (int j = 0; j < curr_chunk_size; j++)
+		{
+			if (!LIST_PUSH(out, output[j]))
+				return false;
+		}
+	}
+	return true;
+}
+
 #ifdef TEST
 
 #include <Windows.h>
@@ -572,18 +647,6 @@ int main()
 }
 
 #endif
-
-static bool aes_open(const list_t in, list_t out)
-{
-	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
-	return false;
-}
-
-static bool aes_save(const list_t in, list_t out)
-{
-	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
-	return false;
-}
 
 /*	https://webhome.cs.uvic.ca/~nigelh/Publications/DMC.pd
 	https://web.archive.org/web/20070630111546/http://plg.uwaterloo.ca/~ftp/dmc/dmc.c */

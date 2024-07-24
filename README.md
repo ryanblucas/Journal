@@ -6,5 +6,6 @@
 
 All runs completely in the Windows terminal
 ## Features to add
-- Encryption
 - Console theming saved in the user file
+---
+DISCLAIMER: This application is for educational purposes and should not be trusted as a cryptographically secure application.
