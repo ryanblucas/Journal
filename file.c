@@ -141,7 +141,7 @@ file_details_t file_open(const char* directory, file_type_t type)
 		editor_destroy_lines(lines);
 		return FAILED_FILE_DETAILS;
 	}
-	return (file_details_t) { .directory = directory, .lines = lines };
+	return (file_details_t) { .directory = directory, .lines = lines, .type = type };
 }
 
 /* saves console's file given user's current settings */
