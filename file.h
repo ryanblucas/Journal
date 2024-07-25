@@ -28,7 +28,7 @@ typedef struct file_details
 } file_details_t;
 
 /* sets password with a max len of 64 */
-bool file_set_password(const char* password);
+void file_set_password(const char* password);
 
 /* does file exist */
 bool file_exists(const char* directory);

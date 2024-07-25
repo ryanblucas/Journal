@@ -178,7 +178,7 @@ bool list_concat(list_t list, const list_t other, int pos)
 	int bound = max(list->count + other->count, pos + other->count * 2);
 	if (list->reserved <= bound)
 	{
-		if (!list_reserve(list, round_to_power_of_two(bound) - list->reserved))
+		if (!list_reserve(list, round_to_power_of_two(bound + 1) - list->reserved))
 			return false;
 	}
 

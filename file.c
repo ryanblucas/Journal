@@ -26,18 +26,12 @@ static bool dmc_save(const list_t in, list_t out);
 
 static char aes_header[3] = { 0xAA, 0xEE, 0x17 };
 static char dmc_header[3] = { 0xDD, 0x17, 0xCC };
-static char* user_password;
+static char user_password[64] = { 0 };
 
 /* sets password with a max len of 64 */
-bool file_set_password(const char* password)
+void file_set_password(const char* password)
 {
-	if (!user_password)
-	{
-		user_password = malloc(64);
-		if (!user_password)
-			return false;
-	}
-	strncpy(user_password, password, 64);
+	strncpy(user_password, password, sizeof user_password);
 	return true;
 }
 
@@ -356,13 +350,13 @@ static void aes_expand_key(uint8_t key[KEY_SIZE], uint8_t expanded_key[EXP_KEY_S
 	{
 		uint8_t temp[4];
 		for (int i = 0; i < 4; i++)
-			temp[i] = expanded_key[(pos - 4) + i];
+			temp[i] = expanded_key[pos - 4 + i];
 
 		if (pos % KEY_SIZE == 0)
 		{
 			aes_rotate_left(temp);
 			for (int i = 0; i < 4; i++)
-				temp[i] = aes_sbox[i];
+				temp[i] = aes_sbox[temp[i]];
 			temp[0] ^= aes_rcon[rcon_i++];
 		}
 
@@ -393,7 +387,7 @@ static uint8_t aes_galois_multiply(uint8_t a, uint8_t b)
 static inline void aes_substitute_bytes(uint8_t state[STATE_SIZE], uint8_t sbox[sizeof aes_sbox])
 {
 	for (int i = 0; i < STATE_SIZE; i++)
-		state[i] = sbox[i];
+		state[i] = sbox[state[i]];
 }
 
 static inline void aes_shift_rows_left(uint8_t state[STATE_SIZE])
@@ -532,28 +526,127 @@ static void aes_decrypt_chunk(uint8_t input[STATE_SIZE], uint8_t output[STATE_SI
 	aes_shift_rows_right(state);
 	aes_substitute_bytes(state, aes_sbox_invert);
 	aes_add_round_key(state, round_key);
+
+	for (int i = 0; i < 4; i++)
+	{
+		for (int j = 0; j < 4; j++)
+			output[i * 4 + j] = state[i + j * 4];
+	}
+}
+
+/* TO DO: use PBKDF2-SHA256, the plain text user input seed has awful entropy */
+
+struct isaac_state
+{
+	uint32_t mm[256], seed[256];
+	uint32_t aa, bb, cc;
+	int pos;
+};
+
+static void isaac_main(struct isaac_state* state)
+{
+	state->cc++;
+	state->bb += state->cc;
+
+	for (int i = 0; i < 256; i++)
+	{
+		uint32_t x = state->mm[i];
+		switch (i % 4)
+		{
+		case 0: state->aa ^= state->aa << 13; break;
+		case 1: state->aa ^= state->aa >> 6; break;
+		case 2: state->aa ^= state->aa << 2; break;
+		case 3: state->aa ^= state->aa >> 16; break;
+		}
+		state->aa +=					state->mm[(i + 128) % 256];
+		state->mm[i] =					state->mm[(x >> 2) % 256] + state->aa + state->bb;
+		state->seed[i] = state->bb =	state->mm[(state->mm[i] >> 10) % 256] + x;
+		state->pos = 0;
+	}
+}
+
+static struct isaac_state* isaac_init(const char* seed)
+{
+#define ISAAC_MIX(val) do \
+{ \
+	val[0] ^= val[1] << 11;	val[3] += val[0]; val[1] += val[2]; \
+	val[1] ^= val[2] >> 2;	val[4] += val[1]; val[2] += val[3]; \
+	val[2] ^= val[3] << 8;	val[5] += val[2]; val[3] += val[4]; \
+	val[3] ^= val[4] >> 16;	val[6] += val[3]; val[4] += val[5]; \
+	val[4] ^= val[5] << 10;	val[7] += val[4]; val[5] += val[6]; \
+	val[5] ^= val[6] >> 4;	val[0] += val[5]; val[6] += val[7]; \
+	val[6] ^= val[7] << 8;	val[1] += val[6]; val[7] += val[0]; \
+	val[7] ^= val[0] >> 9;	val[2] += val[7]; val[0] += val[1]; \
+} while (0)
+
+	struct isaac_state* result = calloc(1, sizeof * result);
+	if (!result)
+		return NULL;
+
+	for (int i = 0; i < 256; i++)
+	{
+		result->seed[i] = 0;
+		if (*seed)
+			result->seed[i] = *seed++;
+	}
+
+	uint32_t val[8];
+	for (int i = 0; i < 8; i++)
+		val[i] = 0x9E3779B9; /* golden ratio */
+	for (int i = 0; i < 4; i++)
+		ISAAC_MIX(val);
+
+	for (int i = 0; i < 256; i += 8)
+	{
+		for (int j = 0; j < 8; j++)
+			val[j] += result->seed[i + j];
+		ISAAC_MIX(val);
+	}
+
+	for (int i = 0; i < 256; i += 8)
+	{
+		for (int j = 0; j < 8; j++)
+			val[j] += result->seed[i + j];
+		ISAAC_MIX(val);
+		for (int j = 0; j < 8; j++)
+			result->seed[i + j] += val[j];
+	}
+
+	isaac_main(result);
+	return result;
+
+#undef ISAAC_MIX
 }
 
 static bool aes_open(const list_t in, list_t out)
 {
-	return false; /* NOT FULLY IMPLEMENTED! see TO DO below */
-
-	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
+	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char) && *user_password);
 	int size = list_count(in);
 	uint8_t* buf = list_element_array(in);
-	if (size < EXTENSION_LEN + 32)
+	if (size < EXTENSION_LEN + STATE_SIZE + 16)
 		return false;
 
-	if (memcmp(buf, AES_EXTENSION, EXTENSION_LEN) != 0)
+	if (memcmp(buf, aes_header, sizeof aes_header) != 0)
 		return false;
 
-	/*	TO DO: add PBKDF2, SHA-256, and a cryptographically secure PRNG implementation.
-		Create key from PBKDF2 using SHA-256 and the PRNG. Save that key somehow (hash it)
-		and verify if the current password is valid for the file being opened. */
-	uint8_t key[16];
+	uint8_t key[KEY_SIZE];
+	struct isaac_state* rng = isaac_init(user_password);
+	if (!rng)
+		return false;
+	for (int i = 0; i < KEY_SIZE; i++)
+		key[i] = rng->seed[rng->pos++] % 0x100;
+	for (int i = 0; i < 16; i++)
+	{
+		if (buf[i + sizeof aes_header] != rng->seed[rng->pos++] % 0x100)
+		{
+			debug_format("Password is not valid.\n");
+			return false;
+		}
+	}
+	free(rng);
 
 	int chunk_count = (size - 19) / STATE_SIZE + 1;
-	for (int i = 20; i < chunk_count * STATE_SIZE; i += STATE_SIZE)
+	for (int i = sizeof aes_header + 16; i < chunk_count * STATE_SIZE; i += STATE_SIZE)
 	{
 		int curr_chunk_size = min(STATE_SIZE, size - i);
 		if (!curr_chunk_size)
@@ -573,10 +666,8 @@ static bool aes_open(const list_t in, list_t out)
 
 static bool aes_save(const list_t in, list_t out)
 {
-	return false; /* NOT FULLY IMPLEMENTED! see TO DO above in aes_open */
+	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char) && *user_password);
 
-	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
-	
 	if (!LIST_PUSH(out, aes_header[0])
 		|| !LIST_PUSH(out, aes_header[1])
 		|| !LIST_PUSH(out, aes_header[2]))
@@ -584,8 +675,18 @@ static bool aes_save(const list_t in, list_t out)
 		return false;
 	}
 
-	/* TO DO: see above, and save this hashed result. */
-	uint8_t key[16];
+	uint8_t key[KEY_SIZE];
+	struct isaac_state* rng = isaac_init(user_password);
+	if (!rng)
+		return false;
+	for (int i = 0; i < KEY_SIZE; i++)
+		key[i] = rng->seed[rng->pos++] % 0x100;
+	for (int i = 0; i < 16; i++)
+	{
+		if (!list_push_primitive(out, rng->seed[rng->pos++] % 0x100))
+			return false;
+	}
+	free(rng);
 
 	int size = list_count(in);
 	uint8_t* buf = list_element_array(in);
@@ -610,25 +711,53 @@ static bool aes_save(const list_t in, list_t out)
 }
 
 #ifdef TEST
+#define FILE_TEST
+#ifdef FILE_TEST
+#include <time.h>
 
-#include <Windows.h>
-
-/* current AES encryption as of 7-23-24 can do this many a second. */
-#define TEST_COUNT 0x8000
-
-static int aes_test(void)
+void rand_str(char* buf, size_t len)
 {
-	uint8_t input[16], output[16], decrypt[16], key[16];
-	for (int i = 0; i < 16; i++)
+	for (size_t i = 0; i < len - 1; i++)
+		buf[i] = rand() % 26 + 'A';
+}
+
+int main()
+{
+	srand(time(NULL));
+	char password[11] = { 0 };
+	rand_str(password, sizeof password);
+	file_set_password(password);
+
+	file_details_t test = { .directory = "aes_test_start.txt", .lines = list_create(sizeof(line_t)) };
+	for (int i = 0; i < 128; i++)
 	{
-		input[i] = rand();
-		key[i] = rand();
+		char buf[32];
+		rand_str(buf, sizeof buf);
+		line_t line = { .string = list_create_with_array(buf, sizeof(char), sizeof buf - 1) /* exclude NUL terminator */ };
+		LIST_PUSH(test.lines, line);
 	}
 
-	aes_encrypt_chunk(input, output, key);
-	aes_decrypt_chunk(output, decrypt, key);
-	return memcmp(input, decrypt, STATE_SIZE);
+	assert(file_save(test, TYPE_PLAIN));
+	test.directory = "aes_test_start.aes";
+	assert(file_save(test, TYPE_ENCRYPTED));
+	file_details_t read = file_open(test.directory, TYPE_ENCRYPTED);
+	assert(!IS_BAD_DETAILS(read));
+	for (int i = 0; i < list_count(read.lines); i++)
+	{
+		list_t str = LIST_GET(read.lines, i, line_t)->string;
+		for (int j = 0; j < list_count(str); j++)
+			assert(*LIST_GET(str, j, char) == *LIST_GET(LIST_GET(test.lines, i, line_t)->string, j, char));
+	}
+	read.directory = "aes_test.end.txt";
+	assert(file_save(read, TYPE_PLAIN));
 }
+#else
+#include <Windows.h>
+
+/* each completed in ~1 second */
+
+#define ENCRYPT_COUNT 0x20000
+#define DECRYPT_COUNT 0x18000
 
 int main()
 {
@@ -638,14 +767,27 @@ int main()
 	QueryPerformanceCounter(&start);
 	srand(start.QuadPart);
 
-	int i;
+	uint8_t input[16], output[16], decrypt[16], key[16];
+	for (int i = 0; i < 16; i++)
+	{
+		input[i] = rand();
+		key[i] = rand();
+	}
+
 	QueryPerformanceCounter(&start);
-	for (i = 0; i < TEST_COUNT && aes_test() != 0; i++);
+	for (int i = 0; i < ENCRYPT_COUNT; i++)
+		aes_encrypt_chunk(input, output, key);
 	QueryPerformanceCounter(&end);
+	printf("Encrypted %i chunks in %fs.\n", ENCRYPT_COUNT, (end.QuadPart - start.QuadPart) / (double)freq.QuadPart);
 
-	printf("Passed %i tests out of %i in %fs.\n", i, TEST_COUNT, (end.QuadPart - start.QuadPart) / (double)freq.QuadPart);
+	QueryPerformanceCounter(&start);
+	for (int i = 0; i < DECRYPT_COUNT; i++)
+		aes_decrypt_chunk(output, decrypt, key);
+	QueryPerformanceCounter(&end);
+	bool success = memcmp(input, decrypt, STATE_SIZE) == 0;
+	printf("%s %i chunks in %fs.\n", success ? "Successfully decrypted" : "Failed to decrypt", DECRYPT_COUNT, (end.QuadPart - start.QuadPart) / (double)freq.QuadPart);
 }
-
+#endif
 #endif
 
 /*	https://webhome.cs.uvic.ca/~nigelh/Publications/DMC.pd
