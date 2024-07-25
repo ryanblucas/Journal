@@ -68,13 +68,15 @@ bool console_move_cursor(coords_t coords);
 bool console_is_valid_cursor(coords_t coords);
 /* adds raw text to coordinates, formatting appropriately */
 bool console_add_raw(const char* raw, coords_t* coords);
+/* deletes region */
+void console_delete_region(coords_t begin, coords_t end);
 
 /* returns false if there is no selection, otherwise sets pointers to cursor positions */
 bool console_get_selection_region(coords_t* begin, coords_t* end);
 /* sets contents of assumed empty list "str" to the contents of the selection */
 bool console_copy_selection_string(list_t str);
 /* deletes contents of selection */
-bool console_delete_selection(void);
+void console_delete_selection(void);
 
 /* clears action buffer entirely */
 void console_clear_buffer(void);

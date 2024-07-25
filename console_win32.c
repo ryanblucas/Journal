@@ -592,11 +592,13 @@ static bool console_act_delete_selection(void)
 	if (!str)
 		return false;
 
-	if (!console_copy_selection_string(str) || !console_delete_selection())
+	if (!console_copy_selection_string(str))
 	{
 		list_destroy(str);
 		return false;
 	}
+
+	console_delete_selection();
 
 	char* str_copy = malloc(list_count(str));
 	if (!str_copy)
@@ -913,6 +915,14 @@ bool console_add_raw(const char* raw, coords_t* coords)
 	return true;
 }
 
+/* deletes region */
+void console_delete_region(coords_t begin, coords_t end)
+{
+	assert(console_is_created());
+	editor_delete_region(lines, begin, end);
+	DEBUG_ON_FAILURE(console_invalidate());
+}
+
 /* returns false if there is no selection, otherwise sets pointers to cursor positions */
 bool console_get_selection_region(coords_t* begin, coords_t* end)
 {
@@ -943,18 +953,17 @@ bool console_copy_selection_string(list_t str)
 }
 
 /* deletes contents of selection */
-bool console_delete_selection(void)
+void console_delete_selection(void)
 {
 	assert(console_is_created());
 	coords_t begin, end;
 	if (!console_get_selection_region(&begin, &end))
-		return true;
+		return;
 
 	editor_delete_region(lines, begin, end);
 	selecting = false;
 	console_move_cursor(begin);
 	DEBUG_ON_FAILURE(console_write_buffer());
-	return true;
 }
 
 /* clears action buffer entirely */
