@@ -164,30 +164,33 @@ bool editor_copy_region(const list_t lines, list_t out, coords_t begin_coords, c
 		&& editor_compare_cursors(begin_coords, end_coords) <= 0);
 
 	const line_t* start = LIST_GET(lines, begin_coords.row, line_t), *end = LIST_GET(lines, end_coords.row, line_t);
-	list_concat(out, start->string, 0);
+	if (!list_concat(out, start->string, 0))
+		return false;
 	if (start != end)
 	{
 		list_splice_count(out, 0, begin_coords.column);
-		list_push_primitive(out, (void*)'\n');
+		if (!list_push_primitive(out, (void*)'\n'))
+			return false;
 		for (int i = begin_coords.row + 1; i < end_coords.row; i++)
 		{
-			list_concat(out, LIST_GET(lines, i, line_t)->string, list_count(out));
-			list_push_primitive(out, (void*)'\n');
+			if (!list_concat(out, LIST_GET(lines, i, line_t)->string, list_count(out))
+				|| !list_push_primitive(out, (void*)'\n'))
+				return false;
 		}
 		int pos = list_count(out);
-		list_concat(out, end->string, pos);
+		if (!list_concat(out, end->string, pos))
+			return false;
 		list_splice_count(out, pos + end_coords.column + 1, list_count(end->string) - end_coords.column - 1);
 	}
 	else
 	{
 		list_splice_count(out, end_coords.column + 1, list_count(out) - end_coords.column - 1);
 		list_splice_count(out, 0, begin_coords.column);
-		if (end_coords.column == list_count(out))
-			list_push_primitive(out, (void*)'\n');
+		if (end_coords.column == list_count(out) && !list_push_primitive(out, (void*)'\n'))
+			return false;
 	}
 
-	list_push_primitive(out, (void*)'\0');
-	return true;
+	return list_push_primitive(out, (void*)'\0');
 }
 
 /* deletes region of lines */
