@@ -476,7 +476,7 @@ static bool console_handle_control_event(int ch, bool shifting)
 		}
 		debug_format("Saving file \"%s\" with type %i.\n", dir, current_type);
 		return DEBUG_ON_FAILURE(user_save_file((file_save_t) { .directory = dir, .cursor = cursor })) &&
-			DEBUG_ON_FAILURE(file_save((file_details_t) { .directory = dir, .lines = lines }, current_type));
+			DEBUG_ON_FAILURE(file_save((file_details_t) { .directory = dir, .lines = lines, .type = current_type }));
 	}
 	return true;
 }

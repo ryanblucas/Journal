@@ -40,7 +40,7 @@ bool file_get_type(const char* directory, file_type_t* type);
 /* opens file using function */
 file_details_t file_open(const char* directory, file_type_t type);
 /* saves file using function */
-bool file_save(const file_details_t details, file_type_t type);
+bool file_save(const file_details_t details);
 /* determines type of file to open */
 file_details_t file_determine_and_open(const char* directory);
 

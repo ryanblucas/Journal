@@ -145,7 +145,7 @@ file_details_t file_open(const char* directory, file_type_t type)
 }
 
 /* saves console's file given user's current settings */
-bool file_save(const file_details_t details, file_type_t type)
+bool file_save(const file_details_t details)
 {
 	assert(details.directory != NULL);
 	FILE* file = fopen(details.directory, "wb");
@@ -162,7 +162,7 @@ bool file_save(const file_details_t details, file_type_t type)
 
 	list_pop(current, NULL);
 
-	if (type & TYPE_COMPRESSED)
+	if (details.type & TYPE_COMPRESSED)
 	{
 		list_t next = list_create(sizeof(char));
 		if (!next || !dmc_save(current, next))
@@ -174,7 +174,7 @@ bool file_save(const file_details_t details, file_type_t type)
 		}
 		current = next;
 	}
-	if (type & TYPE_ENCRYPTED)
+	if (details.type & TYPE_ENCRYPTED)
 	{
 		list_t next = list_create(sizeof(char));
 		if (!next || !aes_save(current, next))
