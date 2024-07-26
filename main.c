@@ -69,7 +69,7 @@ int main(int argc, char** argv)
 			console_set_file_details(default_file);
 	}
 
-	while (console_poll_events());
+	console_loop();
 	console_destroy();
 	user_t user = user_get_latest();
 	user_unload(&user);

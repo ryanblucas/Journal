@@ -90,8 +90,8 @@ void console_clear_buffer(void);
 	THE BELOW ARE EVENT HANDLERS THAT ADD TO THE ACTION BUFFER
 */
 
-/* blocking function that parses and returns upon input */
-bool console_poll_events(void);
+/* returns once user escapes */
+void console_loop(void);
 /* handles an arrow key action */
 bool console_arrow_key(bool shifting, int dc, int dr);
 /* handles a DEL key command */

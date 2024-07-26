@@ -837,51 +837,52 @@ static bool console_handle_mouse_event(MOUSE_EVENT_RECORD mer)
 	return true;
 }
 
-/* blocking function that parses and returns upon input */
-bool console_poll_events(void)
+/* returns once user escapes */
+void console_loop(void)
 {
-	INPUT_RECORD record;
+	INPUT_RECORD record = { 0 };
 	DWORD read;
-	if (!ReadConsoleInputA(input, &record, 1, &read))
-		return false;
-	assert(read == 1);
-	DEBUG_ON_FAILURE(console_handle_potential_resize());
-	switch (record.EventType)
+
+	while (ReadConsoleInputA(input, &record, 1, &read) 
+		&& (record.EventType != KEY_EVENT || record.Event.KeyEvent.wVirtualKeyCode != VK_ESCAPE))
 	{
-	case KEY_EVENT:
-		if (callback)
+		assert(read == 1);
+		DEBUG_ON_FAILURE(console_handle_potential_resize());
+		switch (record.EventType)
 		{
-			size_t len = strnlen(prompt, CONSOLE_MAX_PROMPT_LEN);
-			if (record.Event.KeyEvent.wVirtualKeyCode == VK_BACK
-				|| record.Event.KeyEvent.wVirtualKeyCode == VK_LEFT)
+		case KEY_EVENT:
+			if (callback)
 			{
-				if (cursor.column <= len)
+				size_t len = strnlen(prompt, CONSOLE_MAX_PROMPT_LEN);
+				if (record.Event.KeyEvent.wVirtualKeyCode == VK_BACK
+					|| record.Event.KeyEvent.wVirtualKeyCode == VK_LEFT)
+				{
+					if (cursor.column <= len)
+						break;
+				}
+				else if (record.Event.KeyEvent.wVirtualKeyCode == VK_RETURN)
+				{
+					callback((char*)list_element_array(lines) + len);
+
+					list_destroy(lines);
+					lines = prev_lines;
+					cursor = prev_cursor;
+					DEBUG_ON_FAILURE(console_move_cursor(cursor) && console_invalidate());
+
+					prev_lines = NULL;
+					prompt = NULL;
+					callback = NULL;
 					break;
+				}
 			}
-			else if (record.Event.KeyEvent.wVirtualKeyCode == VK_RETURN)
-			{
-				callback((char*)list_element_array(lines) + len);
 
-				list_destroy(lines);
-				lines = prev_lines;
-				cursor = prev_cursor;
-				DEBUG_ON_FAILURE(console_move_cursor(cursor) && console_invalidate());
-
-				prev_lines = NULL;
-				prompt = NULL;
-				callback = NULL;
-				break;
-			}
+			DEBUG_ON_FAILURE(console_handle_key_event(record.Event.KeyEvent));
+			break;
+		case MOUSE_EVENT:
+			DEBUG_ON_FAILURE(console_handle_mouse_event(record.Event.MouseEvent));
+			break;
 		}
-
-		DEBUG_ON_FAILURE(console_handle_key_event(record.Event.KeyEvent));
-		break;
-	case MOUSE_EVENT:
-		DEBUG_ON_FAILURE(console_handle_mouse_event(record.Event.MouseEvent));
-		break;
 	}
-
-	return true;
 }
 
 /* re-renders the screen */
