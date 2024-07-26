@@ -620,7 +620,7 @@ static struct isaac_state* isaac_init(const char* seed)
 
 static bool aes_open(const list_t in, list_t out)
 {
-	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char) && *user_password);
+	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
 	int size = list_count(in);
 	uint8_t* buf = list_element_array(in);
 	if (size < EXTENSION_LEN + STATE_SIZE + 16)
@@ -666,7 +666,7 @@ static bool aes_open(const list_t in, list_t out)
 
 static bool aes_save(const list_t in, list_t out)
 {
-	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char) && *user_password);
+	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
 
 	if (!LIST_PUSH(out, aes_header[0])
 		|| !LIST_PUSH(out, aes_header[1])

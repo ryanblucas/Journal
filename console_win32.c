@@ -15,6 +15,7 @@
 #define CONSOLE_INVERT_ATTRIBUTE(attrib)	(((attrib) >> 4) | (((attrib) << 4) & 0xF0))
 #define CONSOLE_DEFAULT_ATTRIBUTE			(1 << 9)
 #define CONSOLE_DEFAULT_CHAR				(1 << 17)
+#define CONSOLE_MAX_PROMPT_LEN				80
 
 typedef int attribute_t;
 
@@ -47,6 +48,37 @@ static coords_t selection_begin;
 static bool write_buffer = true;
 static attribute_t user_attribute =		CONSOLE_CREATE_ATTRIBUTE(COLOR_LIGHT_GRAY, COLOR_BLACK);
 static attribute_t footer_attribute =	CONSOLE_CREATE_ATTRIBUTE(COLOR_WHITE, COLOR_DARK_GRAY);
+
+static const char* prompt;
+static prompt_callback_t callback;
+static list_t prev_lines;
+static coords_t prev_cursor;
+
+/* pauses application to ask user with prompt, calls callback when done and frees string passed after. */
+bool console_prompt_user(const char* _prompt, prompt_callback_t _callback)
+{
+	list_t new_lines = list_create(sizeof(line_t));
+	if (!new_lines)
+		return false;
+	line_t line = { .string = list_create_with_array(_prompt, sizeof(char), strnlen(_prompt, CONSOLE_MAX_PROMPT_LEN)) };
+	if (!line.string || !LIST_PUSH(new_lines, line))
+	{
+		list_destroy(line.string);
+		list_destroy(new_lines);
+		return false;
+	}
+
+	prompt = _prompt;
+	callback = _callback;
+	prev_lines = lines;
+	prev_cursor = cursor;
+
+	cursor = (coords_t){ .column = list_count(line.string) };
+	lines = new_lines;
+
+	DEBUG_ON_FAILURE(console_move_cursor(cursor) && console_invalidate());
+	return true;
+}
 
 bool console_is_created(void)
 {
@@ -330,7 +362,7 @@ static char* console_open_file_dialog(bool does_file_exist)
 		/* OFN_DONTADDTORECENT ~ Plain text files can be opened by anyone, but compressed and encrypted can't. This wouldn't make sense for those files */
 		.Flags =			OFN_DONTADDTORECENT | (does_file_exist ? (OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST) : 0),
 		.lStructSize =		sizeof settings,
-		.lpstrFilter =		"Journal Text Files (.txt, .dmc)\0*.txt;*.dmc\0\0",
+		.lpstrFilter =		"Journal Text Files (.txt, .dmc, .aes)\0*.txt;*.dmc;*.aes\0\0",
 		.nFilterIndex =		1,
 		.lpstrInitialDir =	current_directory,
 		.lpstrFile =		buf,
@@ -436,6 +468,9 @@ static bool console_handle_control_event(int ch, bool shifting)
 		return console_redo(NULL);
 	case 'Z':
 		return console_undo(NULL);
+	case 'P':
+		console_prompt_user("Enter password: ", file_set_password);
+		break;
 
 	case 'A':
 		selecting = true;
@@ -616,7 +651,10 @@ static bool console_act_delete_selection(void)
 
 static bool console_act_delete_char(coords_t prev)
 {
-	char deleted = *LIST_GET(LIST_GET(lines, cursor.row, line_t)->string, cursor.column, char);
+	char newline = '\n';
+	char* deleted = LIST_GET(LIST_GET(lines, cursor.row, line_t)->string, cursor.column, char);
+	if (!deleted)
+		deleted = &newline;
 
 	if (!console_remove_char_from_line(cursor))
 		return false;
@@ -625,7 +663,7 @@ static bool console_act_delete_char(coords_t prev)
 	if (!deleted_copy)
 		return debug_format("Failed to add delete action to buffer.\n");
 
-	deleted_copy[0] = deleted;
+	deleted_copy[0] = *deleted;
 	deleted_copy[1] = '\0';
 	action_t action = { .cursor = prev, .start = cursor, .end = cursor, .did_remove = true, .str = deleted_copy };
 	return LIST_PUSH(actions, action);
@@ -811,6 +849,31 @@ bool console_poll_events(void)
 	switch (record.EventType)
 	{
 	case KEY_EVENT:
+		if (callback)
+		{
+			size_t len = strnlen(prompt, CONSOLE_MAX_PROMPT_LEN);
+			if (record.Event.KeyEvent.wVirtualKeyCode == VK_BACK
+				|| record.Event.KeyEvent.wVirtualKeyCode == VK_LEFT)
+			{
+				if (cursor.column <= len)
+					break;
+			}
+			else if (record.Event.KeyEvent.wVirtualKeyCode == VK_RETURN)
+			{
+				callback((char*)list_element_array(lines) + len);
+
+				list_destroy(lines);
+				lines = prev_lines;
+				cursor = prev_cursor;
+				DEBUG_ON_FAILURE(console_move_cursor(cursor) && console_invalidate());
+
+				prev_lines = NULL;
+				prompt = NULL;
+				callback = NULL;
+				break;
+			}
+		}
+
 		DEBUG_ON_FAILURE(console_handle_key_event(record.Event.KeyEvent));
 		break;
 	case MOUSE_EVENT:

@@ -39,6 +39,8 @@ typedef struct action
 	char* str;
 } action_t;
 
+typedef void (*prompt_callback_t)(const char*);
+
 bool console_is_created(void);
 const list_t console_lines(void);
 coords_t console_cursor(void);
@@ -47,6 +49,9 @@ int console_copy_contents_string(list_t str);
 const char* console_directory(void);
 const list_t console_actions(void);
 bool console_clipboard(list_t str);
+
+/* pauses application to ask user with prompt, calls callback when done and frees string passed after. */
+bool console_prompt_user(const char* prompt, prompt_callback_t callback);
 
 /* set console's file details. File details are copied on the console's end */
 void console_set_file_details(const file_details_t details);

@@ -112,7 +112,7 @@ list_t list_create_with_array(const void* element_array, int element_size, int c
 	if (!result)
 		return NULL;
 	result->count = count;
-	result->reserved = round_to_power_of_two(count);
+	result->reserved = round_to_power_of_two(count + 1);
 	result->element_size = element_size;
 	result->element_array = malloc((size_t)element_size * result->reserved);
 	if (!result->element_array)
