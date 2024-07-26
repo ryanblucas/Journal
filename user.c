@@ -83,7 +83,7 @@ static void user_unload_saves(list_t saves)
 	if (!saves)
 		return;
 	for (int i = 0; i < list_count(saves); i++)
-		free(LIST_GET(saves, i, file_save_t)->directory);
+		free(LIST_GET(saves, i, file_save_t)->directory); /* TO DO: error here when exiting application */
 	list_destroy(saves);
 }
 

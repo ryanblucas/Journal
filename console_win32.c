@@ -382,6 +382,14 @@ bool console_copy(void)
 	return console_copy_selection_to_clipboard();
 }
 
+static inline bool console_commit_action(action_t action)
+{
+	if (!LIST_PUSH(actions, action))
+		return false;
+	list_clear(undid_actions);
+	return true;
+}
+
 /* pastes from clipboard to current position */
 bool console_paste(void)
 {
@@ -407,7 +415,7 @@ bool console_paste(void)
 	strncpy(str_copy, list_element_array(str), list_count(str));
 	list_destroy(str);
 	action_t action = { .coupled = was_selecting, .cursor = prev, .start = prev, .end = console_adjust_cursor(cursor, -1, 0), .did_remove = false, .str = str_copy };
-	return LIST_PUSH(actions, action);
+	return console_commit_action(action);
 }
 
 static bool console_generic_do(bool direction, action_t* out)
@@ -644,9 +652,7 @@ static bool console_act_delete_selection(void)
 	strncpy(str_copy, (char*)list_element_array(str), list_count(str));
 	list_destroy(str);
 	action_t action = { .cursor = prev, .start = start, .end = end, .did_remove = true, .str = str_copy };
-	if (!LIST_PUSH(actions, action))
-		return debug_format("Failed to add delete action to buffer.\n");
-	return true;
+	return console_commit_action(action);
 }
 
 static bool console_act_delete_char(coords_t prev)
@@ -666,7 +672,7 @@ static bool console_act_delete_char(coords_t prev)
 	deleted_copy[0] = *deleted;
 	deleted_copy[1] = '\0';
 	action_t action = { .cursor = prev, .start = cursor, .end = cursor, .did_remove = true, .str = deleted_copy };
-	return LIST_PUSH(actions, action);
+	return console_commit_action(action);
 }
 
 /* handles a DEL key command */
@@ -711,7 +717,7 @@ bool console_return(void)
 		action_t action = { .cursor = cursor, .did_remove = false, .start = cursor, .end = cursor, .str = newline };
 		if (!editor_add_newline(lines, cursor) || !console_move_cursor(end))
 			return false;
-		return LIST_PUSH(actions, action);
+		return console_commit_action(action);
 	}
 }
 
@@ -731,7 +737,7 @@ bool console_tab(void)
 	if (console_add_raw(tab_str, &end) && console_move_cursor(end))
 	{
 		action_t action = { .cursor = start, .did_remove = false, .start = start, .end = end, .str = tab_str };
-		return LIST_PUSH(actions, action);
+		return console_commit_action(action);
 	}
 	return false;
 }
@@ -755,7 +761,7 @@ bool console_character(int ch)
 		str[0] = (char)ch;
 		str[1] = '\0';
 		action_t action = { .cursor = start, .did_remove = false, .start = start, .end = start, .str = str, .coupled = was_selecting };
-		return LIST_PUSH(actions, action);
+		return console_commit_action(action);
 	}
 	return false;
 }

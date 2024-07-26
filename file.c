@@ -32,7 +32,6 @@ static char user_password[64] = { 0 };
 void file_set_password(const char* password)
 {
 	strncpy(user_password, password, sizeof user_password);
-	return true;
 }
 
 /* does file exist */
@@ -683,7 +682,7 @@ static bool aes_save(const list_t in, list_t out)
 		key[i] = rng->seed[rng->pos++] % 0x100;
 	for (int i = 0; i < 16; i++)
 	{
-		if (!list_push_primitive(out, rng->seed[rng->pos++] % 0x100))
+		if (!list_push_primitive(out, (void*)(rng->seed[rng->pos++] % 0x100)))
 			return false;
 	}
 	free(rng);
