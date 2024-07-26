@@ -41,17 +41,18 @@ typedef struct action
 
 typedef void (*prompt_callback_t)(const char*);
 
-bool console_is_created(void);
-const list_t console_lines(void);
-coords_t console_cursor(void);
-const line_t console_current_line(void);
-int console_copy_contents_string(list_t str);
-const char* console_directory(void);
-const list_t console_actions(void);
-bool console_clipboard(list_t str);
-
 /* pauses application to ask user with prompt, calls callback when done and frees string passed after. */
 bool console_prompt_user(const char* prompt, prompt_callback_t callback);
+
+bool console_is_created(void);
+const char* console_directory(void);
+file_type_t console_file_type(void);
+list_t console_actions(void);
+list_t console_undid_actions(void);
+bool console_clipboard(list_t str);
+
+list_t console_lines(void);
+coords_t console_cursor(void);
 
 /* set console's file details. File details are copied on the console's end */
 void console_set_file_details(const file_details_t details);
@@ -69,12 +70,6 @@ bool console_invalidate(void);
 coords_t console_adjust_cursor(coords_t coords, int dc, int dr);
 /* physically moves cursor */
 bool console_move_cursor(coords_t coords);
-/* returns whether or not a cursor position is valid */
-bool console_is_valid_cursor(coords_t coords);
-/* adds raw text to coordinates, formatting appropriately */
-bool console_add_raw(const char* raw, coords_t* coords);
-/* deletes region */
-void console_delete_region(coords_t begin, coords_t end);
 
 /* returns false if there is no selection, otherwise sets pointers to cursor positions */
 bool console_get_selection_region(coords_t* begin, coords_t* end);
@@ -83,7 +78,7 @@ bool console_copy_selection_string(list_t str);
 /* deletes contents of selection */
 void console_delete_selection(void);
 
-/* clears action buffer entirely */
+/* clears action buffers entirely */
 void console_clear_buffer(void);
 
 /*

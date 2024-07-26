@@ -85,7 +85,7 @@ bool console_is_created(void)
 	return !!output;
 }
 
-const list_t console_lines(void)
+list_t console_lines(void)
 {
 	assert(console_is_created());
 	return lines;
@@ -97,28 +97,28 @@ coords_t console_cursor(void)
 	return cursor;
 }
 
-const line_t console_current_line(void)
-{
-	assert(console_is_created());
-	return *LIST_GET(lines, cursor.row, line_t);
-}
-
-int console_copy_contents_string(list_t str)
-{
-	assert(console_is_created());
-	return editor_copy_all_lines(lines, str);
-}
-
 const char* console_directory(void)
 {
 	assert(console_is_created());
 	return current_directory;
 }
 
-const list_t console_actions(void)
+list_t console_actions(void)
 {
 	assert(console_is_created());
 	return actions;
+}
+
+list_t console_undid_actions(void)
+{
+	assert(console_is_created());
+	return undid_actions;
+}
+
+file_type_t console_file_type(void)
+{
+	assert(console_is_created());
+	return current_type;
 }
 
 bool console_clipboard(list_t str)
@@ -347,7 +347,7 @@ static bool console_paste_selection(void)
 		return false;
 	}
 
-	bool result = console_add_raw(list_element_array(str), &cursor);
+	bool result = editor_add_raw(lines, list_element_array(str), &cursor);
 	DEBUG_ON_FAILURE(console_move_cursor(console_adjust_cursor(cursor, 1, 0)));
 	list_destroy(str);
 	return result;
@@ -503,7 +503,7 @@ static bool console_handle_control_event(int ch, bool shifting)
 			if (strncmp(save->directory, buf, MAX_PATH) == 0)
 				last_cursor = save->cursor;
 		}
-		if (console_is_valid_cursor(last_cursor))
+		if (editor_is_valid_cursor(lines, last_cursor))
 			console_move_cursor(last_cursor);
 		else
 			debug_format("Invalid cursor placement saved to user file.\n");
@@ -543,7 +543,7 @@ bool console_arrow_key(bool shifting, int dc, int dr)
 			new_cursor = end;
 	}
 	new_cursor = console_adjust_cursor(new_cursor, dc, dr);
-	if (console_is_valid_cursor(new_cursor))
+	if (editor_is_valid_cursor(lines, new_cursor))
 		return console_move_cursor(new_cursor);
 	return true;
 }
@@ -734,7 +734,7 @@ bool console_tab(void)
 		return false;
 	memset(tab_str, ' ', tabc);
 	tab_str[tabc] = '\0';
-	if (console_add_raw(tab_str, &end) && console_move_cursor(end))
+	if (editor_add_raw(lines, tab_str, &end) && console_move_cursor(end))
 	{
 		action_t action = { .cursor = start, .did_remove = false, .start = start, .end = end, .str = tab_str };
 		return console_commit_action(action);
@@ -948,7 +948,7 @@ coords_t console_adjust_cursor(coords_t coords, int dc, int dr)
 /* physically moves cursor */
 bool console_move_cursor(coords_t coords)
 {
-	assert(console_is_created() && console_is_valid_cursor(coords));
+	assert(console_is_created() && editor_is_valid_cursor(lines, coords));
 	if (!console_is_point_renderable(coords) || coords.row >= camera.row + size.Y - 1) /* accounting for footer */
 	{
 		if (camera.column > coords.column)
@@ -966,31 +966,6 @@ bool console_move_cursor(coords_t coords)
 	console_draw_footer();
 	console_write_buffer();
 	return !write_buffer || SetConsoleCursorPosition(output, (COORD) { (SHORT)(cursor.column - camera.column), (SHORT)(cursor.row - camera.row) });
-}
-
-/* returns whether or not a cursor position is valid */
-bool console_is_valid_cursor(coords_t coords)
-{
-	assert(console_is_created());
-	return editor_is_valid_cursor(lines, coords);
-}
-
-/* adds raw text to coordinates, formatting appropriately */
-bool console_add_raw(const char* raw, coords_t* coords)
-{
-	assert(console_is_created() && raw != NULL && console_is_valid_cursor(*coords));
-	if (!editor_add_raw(lines, raw, coords))
-		return false;
-	console_invalidate();
-	return true;
-}
-
-/* deletes region */
-void console_delete_region(coords_t begin, coords_t end)
-{
-	assert(console_is_created());
-	editor_delete_region(lines, begin, end);
-	DEBUG_ON_FAILURE(console_invalidate());
 }
 
 /* returns false if there is no selection, otherwise sets pointers to cursor positions */

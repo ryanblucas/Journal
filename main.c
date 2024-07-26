@@ -39,7 +39,7 @@ static bool load_config(void)
 			if (IS_BAD_DETAILS(details))
 				continue;
 			console_set_file_details(details);
-			if (console_is_valid_cursor(save->cursor))
+			if (editor_is_valid_cursor(console_lines(), save->cursor))
 				console_move_cursor(console_adjust_cursor(save->cursor, 0, 0));
 			else
 			{
