@@ -69,7 +69,7 @@ bool console_invalidate(void);
 /* moves cursor given delta parameters */
 coords_t console_adjust_cursor(coords_t coords, int dc, int dr);
 /* physically moves cursor */
-bool console_move_cursor(coords_t coords);
+void console_move_cursor(coords_t coords);
 
 /* returns false if there is no selection, otherwise sets pointers to cursor positions */
 bool console_get_selection_region(coords_t* begin, coords_t* end);
