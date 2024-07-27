@@ -31,7 +31,11 @@ static char user_password[64] = { 0 };
 /* sets password with a max len of 64 */
 void file_set_password(const char* password)
 {
+	memset(user_password, 0, sizeof user_password);
 	strncpy(user_password, password, sizeof user_password);
+#if _DEBUG
+	debug_format("Set password to \"%s\"\n", user_password);
+#endif
 }
 
 /* does file exist */
@@ -59,27 +63,21 @@ bool file_get_name(const char* directory, char* buf, int size)
 	return true;
 }
 
-/* gets file type */
-bool file_get_type(const char* directory, file_type_t* type)
+static file_type_t file_read_header(const list_t buffer)
 {
-	assert(directory != NULL && type);
-	FILE* file = fopen(directory, "rb");
-	char header[4];
-	if (!file)
-		return false;
-	bool read_all = fread(header, 1, 4, file) == 4;
-	fclose(file);
-	if (!read_all)
-		return false;
-
-	*type = TYPE_PLAIN;
-	if (memcmp(header, dmc_header, sizeof dmc_header) == 0)
-		*type = TYPE_COMPRESSED;
-	return true;
+	file_type_t type = TYPE_PLAIN;
+	if (list_count(buffer) >= 3)
+	{
+		if (memcmp(list_element_array(buffer), dmc_header, sizeof dmc_header) == 0)
+			type |= TYPE_COMPRESSED;
+		else if (memcmp(list_element_array(buffer), aes_header, sizeof aes_header) == 0)
+			type |= TYPE_ENCRYPTED;
+	}
+	return type;
 }
 
 /* determines type of file and then delegates open function to the appropriate function */
-file_details_t file_open(const char* directory, file_type_t type)
+file_details_t file_open(const char* directory)
 {
 	assert(directory != NULL);
 	FILE* file = fopen(directory, "rb");
@@ -96,6 +94,7 @@ file_details_t file_open(const char* directory, file_type_t type)
 	if (!current)
 		return FAILED_FILE_DETAILS;
 	
+	file_type_t type = file_read_header(current);
 	if (type & TYPE_ENCRYPTED)
 	{
 		list_t next = list_create(sizeof(char));
@@ -109,6 +108,7 @@ file_details_t file_open(const char* directory, file_type_t type)
 		current = next;
 	}
 
+	type |= file_read_header(current);
 	if (type & TYPE_COMPRESSED)
 	{
 		list_t next = list_create(sizeof(char));
@@ -193,15 +193,6 @@ bool file_save(const file_details_t details)
 	return true;
 }
 
-/* determines type of file to open */
-file_details_t file_determine_and_open(const char* directory)
-{
-	file_type_t type;
-	if (!file_get_type(directory, &type))
-		return FAILED_FILE_DETAILS;
-	return file_open(directory, type);
-}
-
 /* get file's extension given file type */
 const char* file_type_to_extension(file_type_t type)
 {
@@ -258,6 +249,7 @@ file_type_t file_extension_to_type(const char* ext)
 #define STATE_SIZE		16 /* state is a 4x4 matrix, row-major */
 /* from "The Design of Rjindael:" "For Rijndael versions with a longer key, the number of rounds was raised by one for every additional 32 bits in the cipher key." */
 #define ROUND_COUNT		(6 + (KEY_SIZE / 4))
+#define AES_FILE_OFFSET	(sizeof aes_header + 16)
 
 static uint8_t aes_sbox[] =
 {
@@ -560,8 +552,8 @@ static void isaac_main(struct isaac_state* state)
 		state->aa +=					state->mm[(i + 128) % 256];
 		state->mm[i] =					state->mm[(x >> 2) % 256] + state->aa + state->bb;
 		state->seed[i] = state->bb =	state->mm[(state->mm[i] >> 10) % 256] + x;
-		state->pos = 0;
 	}
+	state->pos = 0;
 }
 
 static struct isaac_state* isaac_init(const char* seed)
@@ -582,12 +574,8 @@ static struct isaac_state* isaac_init(const char* seed)
 	if (!result)
 		return NULL;
 
-	for (int i = 0; i < 256; i++)
-	{
-		result->seed[i] = 0;
-		if (*seed)
-			result->seed[i] = *seed++;
-	}
+	for (int i = 0; i < 256 && seed[i]; i++)
+		result->seed[i] = seed[i];
 
 	uint32_t val[8];
 	for (int i = 0; i < 8; i++)
@@ -600,15 +588,17 @@ static struct isaac_state* isaac_init(const char* seed)
 		for (int j = 0; j < 8; j++)
 			val[j] += result->seed[i + j];
 		ISAAC_MIX(val);
+		for (int j = 0; j < 8; j++)
+			result->mm[i + j] = val[j];
 	}
 
 	for (int i = 0; i < 256; i += 8)
 	{
 		for (int j = 0; j < 8; j++)
-			val[j] += result->seed[i + j];
+			val[j] += result->mm[i + j];
 		ISAAC_MIX(val);
 		for (int j = 0; j < 8; j++)
-			result->seed[i + j] += val[j];
+			result->mm[i + j] += val[j];
 	}
 
 	isaac_main(result);
@@ -622,7 +612,7 @@ static bool aes_open(const list_t in, list_t out)
 	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
 	int size = list_count(in);
 	uint8_t* buf = list_element_array(in);
-	if (size < EXTENSION_LEN + STATE_SIZE + 16)
+	if (size < AES_FILE_OFFSET)
 		return false;
 
 	if (memcmp(buf, aes_header, sizeof aes_header) != 0)
@@ -634,9 +624,9 @@ static bool aes_open(const list_t in, list_t out)
 		return false;
 	for (int i = 0; i < KEY_SIZE; i++)
 		key[i] = rng->seed[rng->pos++] % 0x100;
-	for (int i = 0; i < 16; i++)
+	for (int i = sizeof aes_header; i < AES_FILE_OFFSET; i++)
 	{
-		if (buf[i + sizeof aes_header] != rng->seed[rng->pos++] % 0x100)
+		if (buf[i] != rng->seed[rng->pos++] % 0x100)
 		{
 			debug_format("Password is not valid.\n");
 			return false;
@@ -645,7 +635,7 @@ static bool aes_open(const list_t in, list_t out)
 	free(rng);
 
 	int chunk_count = (size - 19) / STATE_SIZE + 1;
-	for (int i = sizeof aes_header + 16; i < chunk_count * STATE_SIZE; i += STATE_SIZE)
+	for (int i = AES_FILE_OFFSET; i < chunk_count * STATE_SIZE; i += STATE_SIZE)
 	{
 		int curr_chunk_size = min(STATE_SIZE, size - i);
 		if (!curr_chunk_size)
@@ -660,6 +650,9 @@ static bool aes_open(const list_t in, list_t out)
 				return false;
 		}
 	}
+#if _DEBUG
+	debug_format("Opened file with AES using password \"%s\"\n", user_password);
+#endif
 	return true;
 }
 
@@ -706,6 +699,10 @@ static bool aes_save(const list_t in, list_t out)
 				return false;
 		}
 	}
+
+#if _DEBUG
+	debug_format("Saved file using AES with password \"%s\"\n", user_password);
+#endif
 	return true;
 }
 

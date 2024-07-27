@@ -28,6 +28,7 @@ static coords_t cursor, camera;
 static list_t lines;
 static char current_directory[MAX_PATH];
 static file_type_t current_type;
+static const char* footer_message;
 
 static list_t actions;
 static list_t undid_actions;
@@ -126,6 +127,15 @@ bool console_clipboard(list_t str)
 	GlobalUnlock(buf_handle);
 	CloseClipboard();
 	return result;
+}
+
+static void console_set_title(const char* directory)
+{
+	char title_buf[128];
+	char file_buf[128];
+	file_get_name(directory, file_buf, sizeof file_buf);
+	snprintf(title_buf, sizeof title_buf, "Journal - %s", file_buf);
+	DEBUG_ON_FAILURE(SetConsoleTitleA(title_buf));
 }
 
 /* set console's file details. File details are copied on the console's end */
@@ -472,9 +482,12 @@ static bool console_handle_control_event(int ch, bool shifting)
 		char* buf = console_open_file_dialog(true);
 		if (!buf)
 			return true;
-		file_details_t details = file_determine_and_open(buf);
+		file_details_t details = file_open(buf);
 		if (IS_BAD_DETAILS(details))
+		{
+			footer_message = "Failed to open file.";
 			return false;
+		}
 		console_set_file_details(details);
 		
 		coords_t last_cursor = { 0 };
@@ -489,19 +502,27 @@ static bool console_handle_control_event(int ch, bool shifting)
 			console_move_cursor(last_cursor);
 		else
 			debug_format("Invalid cursor placement saved to user file.\n");
+		footer_message = "Opened file.";
 		return true;
 
 	case 'S':
-		char* dir = current_directory;
-		if (!dir || shifting)
+		if (!current_directory || shifting)
 		{
-			dir = console_open_file_dialog(false);
+			const char* dir = console_open_file_dialog(false);
 			if (!dir)
 				return true;
+			current_type = file_extension_to_type(dir);
+			strncpy(current_directory, dir, MAX_PATH);
+			console_set_title(current_directory);
 		}
-		debug_format("Saving file \"%s\" with type %i.\n", dir, current_type);
-		return DEBUG_ON_FAILURE(user_save_file((file_save_t) { .directory = dir, .cursor = cursor })) &&
-			DEBUG_ON_FAILURE(file_save((file_details_t) { .directory = dir, .lines = lines, .type = current_type }));
+		debug_format("Saving file \"%s\" with type %i.\n", current_directory, current_type);
+		bool result = DEBUG_ON_FAILURE(user_save_file((file_save_t) { .directory = current_directory, .cursor = cursor })) &&
+			DEBUG_ON_FAILURE(file_save((file_details_t) { .directory = current_directory, .lines = lines, .type = current_type }));
+		if (!result)
+			footer_message = "Failed to save file.";
+		else
+			footer_message = "Saved file.";
+		return result;
 	}
 	return true;
 }
@@ -536,17 +557,8 @@ static bool console_add_char_to_line(int ch, coords_t coords)
 	list_t string = LIST_GET(lines, coords.row, line_t)->string;
 	assert(list_count(string) >= coords.column);
 	if (ch == '\n')
-	{
 		return editor_add_newline(lines, coords);
-	}
 	return LIST_ADD(string, (char)ch, coords.column);
-}
-
-static bool console_remove_line(int pos)
-{
-	assert(console_is_created() && pos < list_count(lines));
-	list_remove(lines, pos);
-	return true;
 }
 
 static bool console_remove_char_from_line(coords_t coords)
@@ -556,23 +568,14 @@ static bool console_remove_char_from_line(coords_t coords)
 	assert(coords.column <= list_count(line->string));
 	if (coords.column == list_count(line->string) && coords.row + 1 < list_count(lines))
 	{
-		return list_concat(line->string, LIST_GET(lines, coords.row + 1, line_t)->string, list_count(line->string)) &&
-			console_remove_line(coords.row + 1);
+		if (!list_concat(line->string, LIST_GET(lines, coords.row + 1, line_t)->string, list_count(line->string)))
+			return false;
+		list_remove(lines, coords.row + 1);
+		return true;
 	}
 
 	list_remove(((line_t*)LIST_GET(lines, coords.row, line_t))->string, coords.column);
 	return true;
-}
-
-static bool console_add_line(line_t line, int pos)
-{
-	assert(console_is_created() && pos < list_count(lines));
-	char* str = LIST_GET_ARRAY(line.string, char);
-	do
-	{
-		assert(!CHECK_FOR_NEWLINE(*str));
-	} while (*str++);
-	return LIST_ADD(lines, line, pos);
 }
 
 static bool console_act_delete_selection(void)
@@ -814,7 +817,8 @@ void console_loop(void)
 				}
 				else if (record.Event.KeyEvent.wVirtualKeyCode == VK_RETURN)
 				{
-					callback((char*)list_element_array(lines) + len);
+					list_push_primitive(LIST_GET(lines, 0, line_t)->string, (void*)'\0');
+					callback((char*)list_element_array(LIST_GET(lines, 0, line_t)->string) + len);
 
 					list_destroy(lines);
 					lines = prev_lines;
@@ -826,8 +830,7 @@ void console_loop(void)
 					break;
 				}
 			}
-			else
-				DEBUG_ON_FAILURE(console_handle_key_event(record.Event.KeyEvent));
+			DEBUG_ON_FAILURE(console_handle_key_event(record.Event.KeyEvent));
 			break;
 		case MOUSE_EVENT:
 			DEBUG_ON_FAILURE(console_handle_mouse_event(record.Event.MouseEvent));
@@ -992,6 +995,11 @@ static inline void console_draw_footer(void)
 		list_clear(buf);
 		DEBUG_ON_FAILURE(console_copy_selection_string(buf));
 		console_set_stringf(camera.row + size.Y - 1, camera.column + 48, footer_attribute, "Characters selected: %i", list_count(buf) - 1); /* -1 for NUL character */
+	}
+	if (footer_message)
+	{
+		console_set_stringf(camera.row + size.Y - 1, camera.column + 80, footer_attribute, "%s", footer_message);
+		footer_message = NULL;
 	}
 }
 

@@ -34,18 +34,17 @@ static bool load_config(void)
 		for (int i = 0; i < list_count(user.file_saves); i++)
 		{
 			file_save_t* save = LIST_GET(user.file_saves, 0, file_save_t);
-			file_type_t dir_type = file_extension_to_type(save->directory);
-			file_details_t details = file_open(save->directory, dir_type);
+			file_details_t details = file_open(save->directory);
 			if (IS_BAD_DETAILS(details))
 				continue;
-			console_set_file_details(details);
-			if (editor_is_valid_cursor(console_lines(), save->cursor))
+			if (editor_is_valid_cursor(details.lines, save->cursor))
 				console_move_cursor(console_adjust_cursor(save->cursor, 0, 0));
 			else
 			{
 				debug_format("Invalid cursor placement saved to user file.\n");
 				continue;
 			}
+			console_set_file_details(details);
 			return true;
 		}
 		console_set_file_details(default_file);

@@ -34,15 +34,11 @@ void file_set_password(const char* password);
 bool file_exists(const char* directory);
 /* gets just the name of a file, no directory */
 bool file_get_name(const char* directory, char* buf, int size);
-/* gets file type */
-bool file_get_type(const char* directory, file_type_t* type);
 
-/* opens file using function */
-file_details_t file_open(const char* directory, file_type_t type);
-/* saves file using function */
+/* opens file at directory */
+file_details_t file_open(const char* directory);
+/* saves file given details */
 bool file_save(const file_details_t details);
-/* determines type of file to open */
-file_details_t file_determine_and_open(const char* directory);
 
 /* get file's extension given file type */
 const char* file_type_to_extension(file_type_t type);
