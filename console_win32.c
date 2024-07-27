@@ -941,7 +941,6 @@ static inline bool console_write_buffer(void)
 void console_move_cursor(coords_t coords)
 {
 	assert(console_is_created());
-	debug_format("%i, %i\n", coords.row, coords.column);
 	coords.row = min(max(0, coords.row), list_count(lines) - 1);
 	coords.column = min(max(0, coords.column), list_count(LIST_GET(lines, coords.row, line_t)->string));
 	if (!console_is_point_renderable(coords) || coords.row >= camera.row + size.Y - 1) /* accounting for footer */
