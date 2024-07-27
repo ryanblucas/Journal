@@ -634,17 +634,16 @@ static bool aes_open(const list_t in, list_t out)
 	}
 	free(rng);
 
-	int chunk_count = (size - 19) / STATE_SIZE + 1;
-	for (int i = AES_FILE_OFFSET; i < chunk_count * STATE_SIZE; i += STATE_SIZE)
-	{
-		int curr_chunk_size = min(STATE_SIZE, size - i);
-		if (!curr_chunk_size)
-			break;
+	buf += AES_FILE_OFFSET;
+	size -= AES_FILE_OFFSET;
 
+	int chunk_count = size / STATE_SIZE;
+	for (int i = 0; i < chunk_count * STATE_SIZE; i += STATE_SIZE)
+	{
 		uint8_t chunk[16] = { 0 }, output[16];
-		memcpy(chunk, buf + i, curr_chunk_size);
+		memcpy(chunk, buf + i, STATE_SIZE);
 		aes_decrypt_chunk(chunk, output, key);
-		for (int j = 0; j < curr_chunk_size; j++)
+		for (int j = 0; j < STATE_SIZE; j++)
 		{
 			if (!LIST_PUSH(out, output[j]))
 				return false;
@@ -683,17 +682,17 @@ static bool aes_save(const list_t in, list_t out)
 	int size = list_count(in);
 	uint8_t* buf = list_element_array(in);
 
-	int chunk_count = list_count(in) / STATE_SIZE + 1;
+	int chunk_count = size / STATE_SIZE + 1;
 	for (int i = 0; i < chunk_count * STATE_SIZE; i += STATE_SIZE)
 	{
 		int curr_chunk_size = min(STATE_SIZE, size - i);
-		if (!curr_chunk_size)
+		if (curr_chunk_size <= 0)
 			break;
 
 		uint8_t chunk[16] = { 0 }, output[16];
 		memcpy(chunk, buf + i, curr_chunk_size);
 		aes_encrypt_chunk(chunk, output, key);
-		for (int j = 0; j < curr_chunk_size; j++)
+		for (int j = 0; j < STATE_SIZE; j++)
 		{
 			if (!LIST_PUSH(out, output[j]))
 				return false;
