@@ -27,9 +27,7 @@ static bool user_find_directory(void)
 	char app_data[MAX_PATH];
 	if (FAILED(SHGetFolderPathA(NULL, CSIDL_APPDATA, NULL, SHGFP_TYPE_CURRENT, app_data)))
 		return false;
-	user_directory = malloc(MAX_PATH);
-	if (!user_directory)
-		return false;
+	user_directory = journal_malloc(MAX_PATH);
 	snprintf(user_directory, MAX_PATH, "%s\\" DIRECTORY_NAME, app_data);
 	DWORD attribs = GetFileAttributesA(user_directory);
 	if (attribs == INVALID_FILE_ATTRIBUTES || attribs ^ FILE_ATTRIBUTE_DIRECTORY)
@@ -109,7 +107,7 @@ static list_t user_load_saves(const char* state, long pos, long size)
 		char buf[MAX_PATH_LEN];
 		int dir_size = snprintf(buf, sizeof buf, "%s", &state[i]) + 1; /* snprintf's return value does not include NUL terminator */
 		inc = dir_size + INT_SIZE * 2;
-		if (!file_exists(buf) || !(current.directory = malloc(dir_size)))
+		if (!file_exists(buf) || !(current.directory = journal_malloc(dir_size)))
 			continue;
 		strncpy(current.directory, buf, dir_size);
 		read_int(state, i + dir_size, size, &current.cursor.column);

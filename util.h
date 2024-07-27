@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 typedef void (*panic_callback_t)(void);
 extern panic_callback_t panic_callback;

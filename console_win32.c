@@ -238,12 +238,7 @@ static bool console_create_interface(void)
 	}
 	COORD temp_size = csbi.dwSize;
 	int buffer_size = sizeof * buffer * temp_size.X * temp_size.Y;
-	CHAR_INFO* temp_buffer = malloc(buffer_size);
-	if (!temp_buffer)
-	{
-		CloseHandle(temp_output);
-		return false;
-	}
+	CHAR_INFO* temp_buffer = journal_malloc(buffer_size);
 	memset(temp_buffer, 0, buffer_size);
 
 	input = temp_input;
@@ -293,9 +288,7 @@ static bool console_handle_potential_resize(void)
 	csbi.dwSize = (COORD){ csbi.srWindow.Right + 1, csbi.srWindow.Bottom + 1 };
 	if (!SetConsoleScreenBufferInfoEx(output, &csbi))
 		return false;
-	CHAR_INFO* temp = malloc(sizeof * temp * csbi.dwSize.X * csbi.dwSize.Y);
-	if (!temp)
-		return false;
+	CHAR_INFO* temp = journal_malloc(sizeof * temp * csbi.dwSize.X * csbi.dwSize.Y);
 	memset(temp, 0, sizeof * temp * csbi.dwSize.X * csbi.dwSize.Y);
 	free(buffer);
 	buffer = temp;
@@ -392,12 +385,7 @@ bool console_paste(void)
 		list_destroy(str);
 		return false;
 	}
-	char* str_copy = malloc(list_count(str));
-	if (!str_copy)
-	{
-		list_destroy(str);
-		return false;
-	}
+	char* str_copy = journal_malloc(list_count(str));
 	strncpy(str_copy, list_element_array(str), list_count(str));
 	list_destroy(str);
 	action_t action = { .coupled = was_selecting, .cursor = prev, .start = prev, .end = editor_add_character_position(lines, cursor, -1), .did_remove = false, .str = str_copy };
@@ -561,8 +549,7 @@ static bool console_remove_char_from_line(coords_t coords)
 	assert(coords.column <= list_count(line->string));
 	if (coords.column == list_count(line->string) && coords.row + 1 < list_count(lines))
 	{
-		if (!list_concat(line->string, LIST_GET(lines, coords.row + 1, line_t)->string, list_count(line->string)))
-			return false;
+		list_concat(line->string, LIST_GET(lines, coords.row + 1, line_t)->string, list_count(line->string));
 		list_remove(lines, coords.row + 1);
 		return true;
 	}
@@ -587,12 +574,7 @@ static bool console_act_delete_selection(void)
 
 	console_delete_selection();
 
-	char* str_copy = malloc(list_count(str));
-	if (!str_copy)
-	{
-		list_destroy(str);
-		return false;
-	}
+	char* str_copy = journal_malloc(list_count(str));
 	strncpy(str_copy, (char*)list_element_array(str), list_count(str));
 	list_destroy(str);
 	action_t action = { .cursor = prev, .start = start, .end = end, .did_remove = true, .str = str_copy };
@@ -609,10 +591,7 @@ static bool console_act_delete_char(coords_t prev)
 	if (!console_remove_char_from_line(cursor))
 		return false;
 
-	char* deleted_copy = malloc(sizeof(char) * 2);
-	if (!deleted_copy)
-		return debug_format("Failed to add delete action to buffer.\n");
-
+	char* deleted_copy = journal_malloc(sizeof(char) * 2);
 	deleted_copy[0] = *deleted;
 	deleted_copy[1] = '\0';
 	action_t action = { .cursor = prev, .start = cursor, .end = cursor, .did_remove = true, .str = deleted_copy };
@@ -653,12 +632,9 @@ bool console_return(void)
 		return console_act_delete_selection();
 	else
 	{
-		char* newline = malloc(sizeof(char) * 2);
-		if (newline)
-		{
-			newline[0] = '\n';
-			newline[1] = '\0';
-		}
+		char* newline = journal_malloc(sizeof(char) * 2);
+		newline[0] = '\n';
+		newline[1] = '\0';
 		coords_t end = (coords_t){ 0, cursor.row + 1 };
 		action_t action = { .cursor = cursor, .did_remove = false, .start = cursor, .end = cursor, .str = newline };
 		if (!editor_add_newline(lines, cursor))
@@ -676,7 +652,7 @@ bool console_tab(void)
 		return false;
 	coords_t start = cursor, end = start;
 	int tabc = TAB_SIZE - cursor.column % TAB_SIZE;
-	char* tab_str = malloc(tabc + 1);
+	char* tab_str = journal_malloc(tabc + 1);
 	if (!tab_str)
 		return false;
 	memset(tab_str, ' ', tabc);
@@ -703,9 +679,7 @@ bool console_character(int ch)
 	if (!console_add_char_to_line(ch, cursor))
 		return false;
 	console_move_cursor((coords_t) { cursor.column + 1, cursor.row });
-	char* str = malloc(sizeof(char) * 2);
-	if (!str)
-		return false;
+	char* str = journal_malloc(sizeof(char) * 2);
 	str[0] = (char)ch;
 	str[1] = '\0';
 	action_t action = { .cursor = start, .did_remove = false, .start = start, .end = start, .str = str, .coupled = was_selecting };

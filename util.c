@@ -16,6 +16,8 @@ struct list
 	char* element_array;
 };
 
+panic_callback_t panic_callback = NULL;
+
 int list_reserved(const list_t list)
 {
 	assert(list != NULL);
@@ -87,19 +89,14 @@ uint64_t list_hash(const list_t list)
 list_t list_create(int element_size)
 {
 	assert(element_size != 0);
-	list_t result = malloc(sizeof * result);
-	if (!result)
-		return NULL;
-
-	result->count = 0;
-	result->reserved = STARTING_RESERVE;
-	result->element_size = element_size;
-	result->element_array = malloc((size_t)element_size * result->reserved);
-	if (!result->element_array)
+	list_t result = journal_malloc(sizeof * result);
+	*result = (struct list)
 	{
-		free(result);
-		return NULL;
-	}
+		.count = 0,
+		.reserved = STARTING_RESERVE,
+		.element_size = element_size,
+		.element_array = journal_malloc((size_t)element_size * STARTING_RESERVE)
+	};
 	return result;
 }
 
@@ -108,18 +105,15 @@ list_t list_create_with_array(const void* element_array, int element_size, int c
 	assert(element_size != 0);
 	if (!element_array)
 		return list_create(element_size);
-	list_t result = malloc(sizeof * result);
-	if (!result)
-		return NULL;
-	result->count = count;
-	result->reserved = round_to_power_of_two(count + 1);
-	result->element_size = element_size;
-	result->element_array = malloc((size_t)element_size * result->reserved);
-	if (!result->element_array)
+	list_t result = journal_malloc(sizeof * result);
+	int reserve_count = round_to_power_of_two(count + 1);
+	*result = (struct list)
 	{
-		free(result);
-		return NULL;
-	}
+		.count = count,
+		.reserved = reserve_count,
+		.element_size = element_size,
+		.element_array = journal_malloc((size_t)element_size * reserve_count)
+	};
 	memcpy(result->element_array, element_array, count * element_size);
 	return result;
 }
@@ -136,14 +130,12 @@ void list_destroy(list_t list)
 
 bool list_reserve(list_t list, int count)
 {
-	assert(list != NULL && count > 0);
+	assert(list != NULL && count >= 0);
 	if (count == 0)
-		return true;
+		return;
 
-	char* reallocated = realloc(list->element_array, (size_t)(list->reserved + count) * list->element_size);
-	if (!reallocated)
-		return false;
-	
+	char* reallocated = journal_malloc((size_t)(list->reserved + count) * list->element_size);
+	memcpy(reallocated, list->element_array, list->reserved * list->element_size);
 	list->element_array = reallocated;
 	list->reserved += count;
 	return true;
@@ -154,7 +146,7 @@ bool list_push(list_t list, const void* element)
 	assert(list != NULL && element);
 	memcpy(&list->element_array[list->element_size * list->count], element, list->element_size);
 	if (++list->count >= list->reserved)
-		return list_reserve(list, list->reserved);
+		list_reserve(list, list->reserved);
 	return true;
 }
 
@@ -177,10 +169,7 @@ bool list_concat(list_t list, const list_t other, int pos)
 	assert(list != NULL && other != NULL && pos >= 0 && pos <= list->count && other->element_size == list->element_size);
 	int bound = max(list->count + other->count, pos + other->count * 2);
 	if (list->reserved <= bound)
-	{
-		if (!list_reserve(list, round_to_power_of_two(bound + 1) - list->reserved))
-			return false;
-	}
+		list_reserve(list, round_to_power_of_two(bound + 1) - list->reserved);
 
 	memmove(&list->element_array[(pos + other->count) * list->element_size], &list->element_array[pos * list->element_size], (size_t)other->count * list->element_size);
 	memcpy(&list->element_array[pos * list->element_size], other->element_array, (size_t)other->count * list->element_size);
@@ -195,7 +184,7 @@ bool list_add(list_t list, const void* element, int pos)
 	memmove(&list->element_array[list->element_size + offset], &list->element_array[offset], (size_t)list->count * list->element_size - offset);
 	memcpy(&list->element_array[offset], element, list->element_size);
 	if (++list->count >= list->reserved)
-		return list_reserve(list, list->reserved);
+		list_reserve(list, list->reserved);
 	return true;
 }
 
@@ -263,10 +252,7 @@ char* read_all_file(FILE* file, long* size)
 	if (*size == -1 || fseek(file, 0, SEEK_SET) != 0)
 		return NULL;
 
-	char* buf = malloc(*size);
-	if (!buf)
-		return NULL;
-
+	char* buf = journal_malloc(*size);
 	*size = (long)fread(buf, 1, *size, file);
 	return buf;
 }

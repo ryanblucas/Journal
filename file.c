@@ -838,14 +838,11 @@ static void dmc_predictor_braid(struct dmc_state* state)
 }
 
 /* Initializes clone buffer */
-static bool dmc_predictor_init(struct dmc_state* state)
+static void dmc_predictor_init(struct dmc_state* state)
 {
-	state->clone_buf = malloc(sizeof * state->clone_buf * CLONE_COUNT);
-	if (!state->clone_buf)
-		return false;
+	state->clone_buf = journal_malloc(sizeof * state->clone_buf * CLONE_COUNT);
 	state->max_cb = state->clone_buf + CLONE_COUNT - 20; /* TO DO: why -20? */
 	dmc_predictor_braid(state);
-	return true;
 }
 
 /* returns chance for interval */
@@ -895,9 +892,8 @@ static bool dmc_open(const list_t in, list_t out)
 	if (memcmp(buf, dmc_header, sizeof dmc_header) != 0)
 		return false;
 	
-	struct dmc_state* state = malloc(sizeof * state);
-	if (!state || !dmc_predictor_init(state))
-		return false;
+	struct dmc_state* state = journal_malloc(sizeof * state);
+	dmc_predictor_init(state);
 
 	int max = 0x1000000,
 		min = 0,
@@ -967,9 +963,8 @@ static bool dmc_save(const list_t in, list_t out)
 		|| !LIST_PUSH(out, dmc_header[2]))
 		return false;
 	
-	struct dmc_state* state = malloc(sizeof * state);
-	if (!state || !dmc_predictor_init(state))
-		return false;
+	struct dmc_state* state = journal_malloc(sizeof * state);
+	dmc_predictor_init(state);
 	
 	/* interval variables */
 	int max = 0x1000000,
