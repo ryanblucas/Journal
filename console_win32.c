@@ -47,23 +47,15 @@ static bool console_invalidate(void);
 /* pauses application to ask user with prompt, calls callback when done and frees string passed after. */
 bool console_prompt_user(const char* _prompt, prompt_callback_t _callback)
 {
-	list_t new_lines = list_create(sizeof(line_t));
-	if (!new_lines)
-		return false;
+	prev_lines = lines;
+	lines = list_create(sizeof(line_t));
 	line_t line = { .string = list_create_with_array(_prompt, sizeof(char), strnlen(_prompt, CONSOLE_MAX_PROMPT_LEN)) };
-	if (!line.string || !LIST_PUSH(new_lines, line))
-	{
-		list_destroy(line.string);
-		list_destroy(new_lines);
-		return false;
-	}
+	LIST_PUSH(lines, line);
 
 	prompt = _prompt;
 	callback = _callback;
-	prev_lines = lines;
 	prev_cursor = cursor;
 
-	lines = new_lines;
 	console_move_cursor((coords_t) { .column = list_count(line.string) });
 	return true;
 }
@@ -116,14 +108,12 @@ bool console_clipboard(list_t str)
 		return false;
 
 	list_t temp = list_create_with_array(buf, sizeof(char), (int)strnlen(buf, 0xFFFFFF) + 1);
-	if (!temp)
-		return false;
 	editor_format_raw(temp);
-	bool result = list_concat(str, temp, 0);
+	list_concat(str, temp, 0);
 	list_destroy(temp);
 	GlobalUnlock(buf_handle);
 	CloseClipboard();
-	return result;
+	return true;
 }
 
 static void console_set_title(const char* directory)
@@ -248,19 +238,6 @@ static bool console_create_interface(void)
 	return true;
 }
 
-static bool console_create_editor(void)
-{
-	lines =			editor_create_lines();
-	actions =		list_create(sizeof(action_t));
-	undid_actions = list_create(sizeof(action_t));
-	if (lines != NULL && actions != NULL && undid_actions != NULL)
-		return true;
-	list_destroy(undid_actions);
-	list_destroy(actions);
-	list_destroy(lines);
-	return false;
-}
-
 /* destroys the console if it is created then creates the console */
 bool console_create(void)
 {
@@ -268,11 +245,11 @@ bool console_create(void)
 		console_destroy();
 	if (!console_create_interface())
 		return false;
-	if (!console_create_editor())
-	{
-		console_destroy_interface();
-		return false;
-	}
+
+	lines = editor_create_lines();
+	actions = list_create(sizeof(action_t));
+	undid_actions = list_create(sizeof(action_t));
+
 	DEBUG_ON_FAILURE(console_invalidate()); /* If it fails to draw, then it's not really an initialization problem like one might expect from a false return value */
 	return true;
 }
@@ -300,14 +277,13 @@ static bool console_handle_potential_resize(void)
 		return false;
 	RECT fitted = (RECT){ .right = size.X * cfi.dwFontSize.X, .bottom = size.Y * cfi.dwFontSize.Y };
 	assert(AdjustWindowRectEx(&fitted, GetWindowLong(GetConsoleWindow(), GWL_STYLE), FALSE, GetWindowLong(GetConsoleWindow(), GWL_EXSTYLE)));
-	console_move_cursor(cursor);
 	return DEBUG_ON_FAILURE(SetWindowPos(GetConsoleWindow(), NULL, 0, 0, fitted.right - fitted.left, fitted.bottom - fitted.top, SWP_NOMOVE));
 }
 
 static bool console_copy_selection_to_clipboard(void)
 {
 	list_t str = list_create(sizeof(char));
-	if (!str || !console_copy_selection_string(str))
+	if (!console_copy_selection_string(str))
 	{
 		list_destroy(str);
 		return false;
@@ -318,8 +294,6 @@ static bool console_copy_selection_to_clipboard(void)
 static bool console_paste_selection(void)
 {
 	list_t str = list_create(sizeof(char));
-	if (!str)
-		return false;
 	if (!console_clipboard(str))
 	{
 		list_destroy(str);
@@ -363,8 +337,7 @@ bool console_copy(void)
 
 static inline bool console_commit_action(action_t action)
 {
-	if (!LIST_PUSH(actions, action))
-		return false;
+	LIST_PUSH(actions, action);
 	list_clear(undid_actions);
 	return true;
 }
@@ -378,8 +351,6 @@ bool console_paste(void)
 		console_delete_selection();
 	coords_t prev = cursor;
 	list_t str = list_create(sizeof(char));
-	if (!str)
-		return false;
 	if (!console_clipboard(str) || !console_paste_selection())
 	{
 		list_destroy(str);
@@ -416,7 +387,7 @@ static bool console_generic_do(bool direction, action_t* out)
 				return false;
 		}
 		console_move_cursor(curr.cursor);
-		DEBUG_ON_FAILURE(LIST_ADD(other, curr, other_add));
+		LIST_ADD(other, curr, other_add);
 	} while (curr.coupled && (list_pop(buffer, &curr), true));
 	if (out)
 		*out = head;
@@ -539,7 +510,8 @@ static bool console_add_char_to_line(int ch, coords_t coords)
 	assert(list_count(string) >= coords.column);
 	if (ch == '\n')
 		return editor_add_newline(lines, coords);
-	return LIST_ADD(string, (char)ch, coords.column);
+	LIST_ADD(string, (char)ch, coords.column);
+	return true;
 }
 
 static bool console_remove_char_from_line(coords_t coords)
@@ -563,8 +535,6 @@ static bool console_act_delete_selection(void)
 	coords_t start, end, prev = cursor;
 	list_t str = list_create(sizeof(char));
 	console_get_selection_region(&start, &end);
-	if (!str)
-		return false;
 
 	if (!console_copy_selection_string(str))
 	{
@@ -698,6 +668,7 @@ static bool console_handle_key_event(KEY_EVENT_RECORD ker)
 	case VK_RCONTROL:
 	case VK_CONTROL:
 		result = true;
+		break;
 
 	case VK_DOWN:
 	case VK_UP:
@@ -828,7 +799,10 @@ bool console_copy_selection_string(list_t str)
 	assert(console_is_created() && str != NULL && list_count(str) == 0);
 	coords_t begin_coords, end_coords;
 	if (!console_get_selection_region(&begin_coords, &end_coords))
-		return list_push_primitive(str, 0);
+	{
+		list_push_primitive(str, 0);
+		return;
+	}
 	return editor_copy_region(lines, str, begin_coords, end_coords);
 }
 
@@ -917,11 +891,8 @@ static inline void console_draw_footer(void)
 	if (selecting)
 	{
 		static list_t buf;
-		if (!buf && !(buf = list_create(sizeof(char))))
-		{
-			debug_format("Failed to allocate buffer for the \"characters selected\" footer element.\n");
-			return;
-		}
+		if (!buf)
+			buf = list_create(sizeof(char));
 		list_clear(buf);
 		DEBUG_ON_FAILURE(console_copy_selection_string(buf));
 		console_set_stringf(camera.row + size.Y - 1, camera.column + 48, footer_attribute, "Characters selected: %i", list_count(buf) - 1); /* -1 for NUL character */
@@ -970,6 +941,7 @@ static inline bool console_write_buffer(void)
 void console_move_cursor(coords_t coords)
 {
 	assert(console_is_created());
+	debug_format("%i, %i\n", coords.row, coords.column);
 	coords.row = min(max(0, coords.row), list_count(lines) - 1);
 	coords.column = min(max(0, coords.column), list_count(LIST_GET(lines, coords.row, line_t)->string));
 	if (!console_is_point_renderable(coords) || coords.row >= camera.row + size.Y - 1) /* accounting for footer */
