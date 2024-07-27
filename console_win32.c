@@ -41,6 +41,9 @@ static prompt_callback_t callback;
 static list_t prev_lines;
 static coords_t prev_cursor;
 
+/* re-renders the screen */
+static bool console_invalidate(void);
+
 /* pauses application to ask user with prompt, calls callback when done and frees string passed after. */
 bool console_prompt_user(const char* _prompt, prompt_callback_t _callback)
 {
@@ -150,11 +153,7 @@ void console_set_file_details(const file_details_t details)
 	list_concat(lines, details.lines, 0);
 	console_move_cursor((coords_t) { 0, 0 });
 
-	char title_buf[128];
-	char file_buf[128];
-	file_get_name(details.directory, file_buf, sizeof file_buf);
-	snprintf(title_buf, sizeof title_buf, "Journal - %s", file_buf);
-	DEBUG_ON_FAILURE(SetConsoleTitleA(title_buf));
+	console_set_title(details.directory);
 
 	strncpy(current_directory, details.directory, sizeof current_directory);
 	current_type = details.type;
@@ -341,7 +340,7 @@ static bool console_paste_selection(void)
 	}
 
 	bool result = editor_add_raw(lines, list_element_array(str), &cursor);
-	console_move_cursor(console_adjust_cursor(cursor, 1, 0));
+	console_move_cursor(editor_add_character_position(lines, cursor, 1));
 	list_destroy(str);
 	return result;
 }
@@ -407,7 +406,7 @@ bool console_paste(void)
 	}
 	strncpy(str_copy, list_element_array(str), list_count(str));
 	list_destroy(str);
-	action_t action = { .coupled = was_selecting, .cursor = prev, .start = prev, .end = console_adjust_cursor(cursor, -1, 0), .did_remove = false, .str = str_copy };
+	action_t action = { .coupled = was_selecting, .cursor = prev, .start = prev, .end = editor_add_character_position(lines, cursor, -1), .did_remove = false, .str = str_copy };
 	return console_commit_action(action);
 }
 
@@ -434,7 +433,7 @@ static bool console_generic_do(bool direction, action_t* out)
 			if (!editor_add_raw(lines, curr.str, &temp))
 				return false;
 		}
-		console_move_cursor(console_adjust_cursor(curr.cursor, 0, 0));
+		console_move_cursor(curr.cursor);
 		DEBUG_ON_FAILURE(LIST_ADD(other, curr, other_add));
 	} while (curr.coupled && (list_pop(buffer, &curr), true));
 	if (out)
@@ -545,9 +544,9 @@ bool console_arrow_key(bool shifting, int dc, int dr)
 		else
 			new_cursor = end;
 	}
-	new_cursor = console_adjust_cursor(new_cursor, dc, dr);
-	if (editor_is_valid_cursor(lines, new_cursor))
-		console_move_cursor(new_cursor);
+	new_cursor = editor_add_character_position(lines, cursor, dc);
+	new_cursor.row += dr;
+	console_move_cursor(new_cursor);
 	return true;
 }
 
@@ -646,7 +645,7 @@ bool console_backspace(void)
 		return console_act_delete_selection();
 	else if (cursor.column != 0 || cursor.row != 0)
 	{
-		console_move_cursor(console_adjust_cursor(cursor, -1, 0));
+		cursor = editor_add_character_position(lines, cursor, -1);
 		return console_act_delete_char(start);
 	}
 	return true;
@@ -776,18 +775,14 @@ static bool console_handle_mouse_event(MOUSE_EVENT_RECORD mer)
 		mouse_state = mer.dwButtonState != 0;
 		if (mouse_state) /* mouse down event */
 		{
-			coords_t translated = { mer.dwMousePosition.X + camera.column, mer.dwMousePosition.Y + camera.row };
-			translated = console_adjust_cursor(translated, 0, 0);
-			console_move_cursor(translated);
+			console_move_cursor((coords_t) { mer.dwMousePosition.X + camera.column, mer.dwMousePosition.Y + camera.row });
 			selection_begin = cursor;
 		}
 	}
 	if (mouse_state && mer.dwEventFlags == MOUSE_MOVED)
 	{
 		selecting = true;
-		coords_t translated = { mer.dwMousePosition.X + camera.column, mer.dwMousePosition.Y + camera.row };
-		translated = console_adjust_cursor(translated, 0, 0);
-		console_move_cursor(translated);
+		console_move_cursor((coords_t) { mer.dwMousePosition.X + camera.column, mer.dwMousePosition.Y + camera.row });
 	}
 	return true;
 }
@@ -798,7 +793,7 @@ void console_loop(void)
 	INPUT_RECORD record = { 0 };
 	DWORD read;
 
-	while (ReadConsoleInputA(input, &record, 1, &read) 
+	while (ReadConsoleInputA(input, &record, 1, &read)
 		&& (record.EventType != KEY_EVENT || record.Event.KeyEvent.wVirtualKeyCode != VK_ESCAPE))
 	{
 		assert(read == 1);
@@ -840,39 +835,6 @@ void console_loop(void)
 	}
 }
 
-/* moves cursor given delta parameters */
-coords_t console_adjust_cursor(coords_t coords, int dc, int dr)
-{
-	if (dc == 0 && dr == 0)
-	{
-		coords.row = min(coords.row, list_count(lines) - 1);
-		coords.column = min(coords.column, list_count(LIST_GET(lines, coords.row, line_t)->string));
-		return coords;
-	}
-
-	if (dr > 0 || coords.row >= -dr)
-	{
-		coords.row = min(coords.row + dr, list_count(lines) - 1);
-		coords.column = min(coords.column, list_count(LIST_GET(lines, coords.row, line_t)->string));
-	}
-	if (dc > 0 || coords.column >= -dc)
-	{
-		if (coords.column + dc > list_count(LIST_GET(lines, coords.row, line_t)->string))
-		{
-			coords.row++;
-			coords.column = 0;
-			dc--;
-		}
-		coords.column += dc;
-	}
-	else if (coords.row != 0) /* dc is negative */
-	{
-		coords.row--;
-		coords.column = list_count(LIST_GET(lines, coords.row, line_t)->string) + dc + 1;
-	}
-	return coords;
-}
-
 /* returns false if there is no selection, otherwise sets pointers to cursor positions */
 bool console_get_selection_region(coords_t* begin, coords_t* end)
 {
@@ -888,7 +850,7 @@ bool console_get_selection_region(coords_t* begin, coords_t* end)
 		*end = cursor;
 	}
 	bool is_selecting = selection_begin.row != cursor.row || selection_begin.column != cursor.column;
-	*end = console_adjust_cursor(*end, -1, 0);
+	*end = editor_add_character_position(lines, *end, -1);
 	return selecting && is_selecting;
 }
 
@@ -1033,13 +995,15 @@ static inline bool console_write_buffer(void)
 {
 	SMALL_RECT region = (SMALL_RECT){ 0, 0, size.X - 1, size.Y - 1 };
 	return WriteConsoleOutputA(output, buffer, size, (COORD) { 0, 0 }, &region) 
-		&& SetConsoleCursorPosition(output, (COORD) { (SHORT)(cursor.column - camera.column), (SHORT)(cursor.row - camera.row) });;
+		&& SetConsoleCursorPosition(output, (COORD) { (SHORT)(cursor.column - camera.column), (SHORT)(cursor.row - camera.row) });
 }
 
 /* physically moves cursor */
 void console_move_cursor(coords_t coords)
 {
-	assert(console_is_created() && editor_is_valid_cursor(lines, coords));
+	assert(console_is_created());
+	coords.row = min(max(0, coords.row), list_count(lines) - 1);
+	coords.column = min(max(0, coords.column), list_count(LIST_GET(lines, coords.row, line_t)->string));
 	if (!console_is_point_renderable(coords) || coords.row >= camera.row + size.Y - 1) /* accounting for footer */
 	{
 		if (camera.column > coords.column)
@@ -1056,7 +1020,7 @@ void console_move_cursor(coords_t coords)
 }
 
 /* re-renders the screen */
-bool console_invalidate(void)
+static bool console_invalidate(void)
 {
 	assert(console_is_created());
 	for (int row = camera.row; row < camera.row + size.Y - 1; row++)

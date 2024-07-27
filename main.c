@@ -38,7 +38,7 @@ static bool load_config(void)
 			if (IS_BAD_DETAILS(details))
 				continue;
 			if (editor_is_valid_cursor(details.lines, save->cursor))
-				console_move_cursor(console_adjust_cursor(save->cursor, 0, 0));
+				console_move_cursor(save->cursor);
 			else
 			{
 				debug_format("Invalid cursor placement saved to user file.\n");

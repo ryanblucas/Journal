@@ -226,3 +226,21 @@ void editor_delete_region(list_t lines, coords_t begin, coords_t end)
 	if (first_row_end >= begin.column)
 		list_splice(begin_string, begin.column, first_row_end);
 }
+
+/* adds character position to cursor */
+coords_t editor_add_character_position(list_t lines, coords_t cursor, int addend)
+{
+	cursor.column += addend;
+	while (cursor.row > 0 && cursor.column < 0)
+	{
+		cursor.row--;
+		cursor.column += list_count(LIST_GET(lines, cursor.row, line_t)->string) + 1;
+	}
+	while (cursor.row < list_count(lines) - 1 && cursor.column > list_count(LIST_GET(lines, cursor.row, line_t)->string))
+	{
+		cursor.column -= list_count(LIST_GET(lines, cursor.row, line_t)->string) + 1;
+		cursor.row++;
+	}
+	cursor.column = min(cursor.column, list_count(LIST_GET(lines, cursor.row, line_t)->string));
+	return cursor;
+}

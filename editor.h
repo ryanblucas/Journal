@@ -48,3 +48,6 @@ int editor_copy_all_lines(const list_t lines, list_t str);
 bool editor_copy_region(const list_t lines, list_t out, coords_t begin, coords_t end);
 /* deletes region of lines */
 void editor_delete_region(list_t lines, coords_t begin, coords_t end);
+
+/* adds character position to cursor */
+coords_t editor_add_character_position(list_t lines, coords_t cursor, int addend);

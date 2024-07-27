@@ -59,15 +59,11 @@ void console_set_file_details(const file_details_t details);
 /* sets clipboard */
 bool console_set_clipboard(const char* str, size_t size);
 
-/* destroys the console */
-void console_destroy(void);
 /* destroys the console if it is created then creates the console */
 bool console_create(void);
-/* re-renders the screen */
-bool console_invalidate(void);
+/* destroys the console */
+void console_destroy(void);
 
-/* moves cursor given delta parameters */
-coords_t console_adjust_cursor(coords_t coords, int dc, int dr);
 /* physically moves cursor */
 void console_move_cursor(coords_t coords);
 
