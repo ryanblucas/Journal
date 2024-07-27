@@ -11,6 +11,21 @@
 #include <stdio.h>
 #include <stdint.h>
 
+typedef void (*panic_callback_t)(void);
+extern panic_callback_t panic_callback;
+
+extern inline void* journal_malloc(size_t sz)
+{
+	void* res = malloc(sz);
+	if (!res)
+	{
+		if (panic_callback)
+			panic_callback();
+		exit(1);
+	}
+	return res;
+}
+
 #define STARTING_RESERVE		(64)
 #define ELEMENT_NOT_FOUND		(-1)
 

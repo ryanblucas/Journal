@@ -73,6 +73,12 @@ bool console_is_created(void)
 	return !!output;
 }
 
+const file_details_t console_file(void)
+{
+	assert(console_is_created());
+	return (file_details_t) { .directory = current_directory, .lines = lines, .type = current_type };
+}
+
 list_t console_lines(void)
 {
 	assert(console_is_created());
@@ -85,12 +91,6 @@ coords_t console_cursor(void)
 	return cursor;
 }
 
-const char* console_directory(void)
-{
-	assert(console_is_created());
-	return current_directory;
-}
-
 list_t console_actions(void)
 {
 	assert(console_is_created());
@@ -101,12 +101,6 @@ list_t console_undid_actions(void)
 {
 	assert(console_is_created());
 	return undid_actions;
-}
-
-file_type_t console_file_type(void)
-{
-	assert(console_is_created());
-	return current_type;
 }
 
 bool console_clipboard(list_t str)

@@ -45,8 +45,7 @@ typedef void (*prompt_callback_t)(const char*);
 bool console_prompt_user(const char* prompt, prompt_callback_t callback);
 
 bool console_is_created(void);
-const char* console_directory(void);
-file_type_t console_file_type(void);
+const file_details_t console_file(void);
 list_t console_actions(void);
 list_t console_undid_actions(void);
 bool console_clipboard(list_t str);

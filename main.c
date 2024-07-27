@@ -14,6 +14,25 @@
 
 static file_details_t default_file;
 
+static void journal_panic(void)
+{
+	static bool already_called = false;
+	if (already_called)
+	{
+		/* debug_format uses regular malloc, not journal_malloc so it can't panic more than twice. */
+		debug_format("Paniced twice!! Dropping everything.\n");
+		return;
+	}
+	already_called = true;
+
+	user_t user = user_get_latest();
+	user_unload(&user);
+	const file_details_t details = console_file();
+	console_destroy();
+	bool saved_file = file_save(details); /* free memory before trying to save, file_save allocates memory. */
+	debug_format("Ran out of memory, %s current file.\n", saved_file ? "successfully saved" : "failed to save");
+}
+
 static bool load_config(void)
 {
 	char directory[260];
@@ -57,6 +76,8 @@ static bool load_config(void)
 
 int main(int argc, char** argv)
 {
+	panic_callback = journal_panic;
+
 	if (!console_create())
 		return 1;
 	if (!load_config())
@@ -72,6 +93,7 @@ int main(int argc, char** argv)
 	console_destroy();
 	user_t user = user_get_latest();
 	user_unload(&user);
+
 	return 0;
 }
 
