@@ -277,7 +277,7 @@ bool read_int(const char* buf, long pos, long size, int* out)
 	if (size < pos + INT_SIZE)
 	{
 		*out = 0;
-		debug_format("Read int outside bounds!\n");
+		debug_format("Read int outside bounds! (%i + INT_SIZE > %i)\n", pos, size);
 		return false;
 	}
 	*out = (int)buf[pos] | ((int)buf[pos + 1] << 8) | ((int)buf[pos + 2] << 16) | ((int)buf[pos + 3] << 24);

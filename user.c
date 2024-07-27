@@ -103,31 +103,19 @@ static list_t user_load_saves(const char* state, long pos, long size)
 	if (!result)
 		return NULL;
 	file_save_t current = { 0 };
-	for (long i = pos, start = i; i < size; i++)
+	for (long i = pos, inc = 0; i < size; i += inc)
 	{
-		if (state[i] == '\0')
-		{
-			current.directory = malloc((size_t)i - start + 1);
-			if (!current.directory)
-			{
-				user_unload_saves(result);
-				return NULL;
-			}
-			strncpy(current.directory, &state[start], (size_t)i - start + 1);
-		}
-		else if (current.directory)
-		{
-			start = i + INT_SIZE * 2;
-			read_int(state, i, size, &current.cursor.column);
-			read_int(state, i + INT_SIZE, size, &current.cursor.row);
-			if (!LIST_PUSH(result, current))
-			{
-				user_unload_saves(result);
-				return NULL;
-			}
-			current.directory = NULL;
-			i = start;
-		}
+		/* file saves are layed out like "directory", NUL terminator, saved column, saved row. */
+		char buf[MAX_PATH_LEN];
+		int dir_size = snprintf(buf, sizeof buf, "%s", &state[i]) + 1; /* snprintf's return value does not include NUL terminator */
+		inc = dir_size + INT_SIZE * 2;
+		if (!file_exists(buf) || !(current.directory = malloc(dir_size)))
+			continue;
+		strncpy(current.directory, buf, dir_size);
+		read_int(state, i + dir_size, size, &current.cursor.column);
+		read_int(state, i + dir_size + INT_SIZE, size, &current.cursor.row);
+		if (!LIST_PUSH(result, current))
+			free(current.directory);
 	}
 	return result;
 }
