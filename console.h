@@ -57,6 +57,8 @@ coords_t console_cursor(void);
 void console_set_file_details(const file_details_t details);
 /* sets clipboard */
 bool console_set_clipboard(const char* str, size_t size);
+/* set color and foreground of console */
+void console_set_color(color_t foreground, color_t background);
 
 /* destroys the console if it is created then creates the console */
 bool console_create(void);

@@ -46,31 +46,26 @@ static bool load_config(void)
 		if (temp)
 			fclose(temp);
 	}
-	default_file = file_open(buf, TYPE_PLAIN);
+	default_file = file_open(buf);
 	user_t user;
-	if (user_load(&user))
+	if (!user_load(&user))
+		return false;
+	console_set_color(user.foreground, user.background);
+	for (int i = 0; i < list_count(user.file_saves); i++)
 	{
-		for (int i = 0; i < list_count(user.file_saves); i++)
-		{
-			file_save_t* save = LIST_GET(user.file_saves, 0, file_save_t);
-			file_details_t details = file_open(save->directory);
-			if (IS_BAD_DETAILS(details))
-				continue;
-			if (editor_is_valid_cursor(details.lines, save->cursor))
-				console_move_cursor(save->cursor);
-			else
-			{
-				debug_format("Invalid cursor placement saved to user file.\n");
-				continue;
-			}
-			console_set_file_details(details);
-			return true;
-		}
-		console_set_file_details(default_file);
-		file_save_t save = { .cursor = (coords_t) { 0 }, .directory = default_file.directory };
-		if (LIST_PUSH(user.file_saves, save))
-			return true;
+		file_save_t* save = LIST_GET(user.file_saves, 0, file_save_t);
+		file_details_t details = file_open(save->directory);
+		if (IS_BAD_DETAILS(details))
+			continue;
+		debug_format("Saved cursor location for file \"%s\" is (%i, %i)\n", save->directory, save->cursor.column + 1, save->cursor.row + 1);
+		console_set_file_details(details);
+		console_move_cursor(save->cursor);
+		return true;
 	}
+	console_set_file_details(default_file);
+	file_save_t save = { .cursor = (coords_t) { 0 }, .directory = default_file.directory };
+	if (LIST_PUSH(user.file_saves, save))
+		return true;
 	return false;
 }
 

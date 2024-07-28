@@ -166,6 +166,13 @@ bool console_set_clipboard(const char* str, size_t size)
 	return true;
 }
 
+/* set color and foreground of console */
+void console_set_color(color_t foreground, color_t background)
+{
+	user_attribute = CONSOLE_CREATE_ATTRIBUTE(foreground, background);
+	console_invalidate();
+}
+
 static void console_destroy_interface(void)
 {
 	input = NULL;
