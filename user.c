@@ -54,11 +54,8 @@ int user_get_user_directory(char* directory)
 static list_t blank_saves;
 static user_t user_default(void)
 {
-	if (!blank_saves && !(blank_saves = list_create(sizeof(file_save_t))))
-	{
-		debug_format("Failed to create fallback saves, aborting.\n");
-		exit(1); /* TO DO: this is really bad */
-	}
+	if (!blank_saves)
+		blank_saves = list_create(sizeof(file_save_t));
 	return (user_t)
 	{
 		.background = COLOR_DARK_BLUE,
@@ -98,8 +95,6 @@ void user_unload(user_t* user)
 static list_t user_load_saves(const char* state, long pos, long size)
 {
 	list_t result = list_create(sizeof(file_save_t));
-	if (!result)
-		return NULL;
 	file_save_t current = { 0 };
 	for (long i = pos, inc = 0; i < size; i += inc)
 	{
@@ -123,8 +118,6 @@ bool user_load(user_t* user)
 	assert(user);
 	memset(user, 0, sizeof * user);
 	user->file_saves = list_create(sizeof(file_save_t));
-	if (!user->file_saves)
-		return false;
 
 	if (!user_directory && !user_find_directory())
 		return false;

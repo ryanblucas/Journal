@@ -54,9 +54,6 @@ list_t list_get_range(const list_t list, int start, int end)
 {
 	assert(list != NULL && start >= 0 && end >= start && end < list->count);
 	list_t result = list_create(list->element_size);
-	if (!result)
-		return NULL;
-
 	int space = end - start + 1;
 	if (space >= result->reserved)
 		list_reserve(result, round_to_power_of_two(space) - result->reserved);
@@ -135,7 +132,7 @@ void list_reserve(list_t list, int count)
 	list->reserved += count;
 }
 
-bool list_push(list_t list, const void* element)
+void list_push(list_t list, const void* element)
 {
 	assert(list != NULL && element);
 	memcpy(&list->element_array[list->element_size * list->count], element, list->element_size);

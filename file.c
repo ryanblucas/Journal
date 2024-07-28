@@ -91,14 +91,12 @@ file_details_t file_open(const char* directory)
 
 	list_t current = list_create_with_array(buf, sizeof(char), size);
 	free(buf);
-	if (!current)
-		return FAILED_FILE_DETAILS;
-	
+
 	file_type_t type = file_read_header(current);
 	if (type & TYPE_ENCRYPTED)
 	{
 		list_t next = list_create(sizeof(char));
-		if (!next || !aes_open(current, next))
+		if (!aes_open(current, next))
 		{
 			list_destroy(next);
 			list_destroy(current);
@@ -112,7 +110,7 @@ file_details_t file_open(const char* directory)
 	if (type & TYPE_COMPRESSED)
 	{
 		list_t next = list_create(sizeof(char));
-		if (!next || !dmc_open(current, next))
+		if (!dmc_open(current, next))
 		{
 			list_destroy(next);
 			list_destroy(current);
@@ -152,7 +150,7 @@ bool file_save(const file_details_t details)
 		return false;
 
 	list_t current = list_create(sizeof(char));
-	if (!current || !editor_copy_all_lines(details.lines, current))
+	if (!editor_copy_all_lines(details.lines, current))
 	{
 		list_destroy(current);
 		fclose(file);
@@ -164,7 +162,7 @@ bool file_save(const file_details_t details)
 	if (details.type & TYPE_COMPRESSED)
 	{
 		list_t next = list_create(sizeof(char));
-		if (!next || !dmc_save(current, next))
+		if (!dmc_save(current, next))
 		{
 			list_destroy(current);
 			fclose(file);
@@ -176,7 +174,7 @@ bool file_save(const file_details_t details)
 	if (details.type & TYPE_ENCRYPTED)
 	{
 		list_t next = list_create(sizeof(char));
-		if (!next || !aes_save(current, next))
+		if (!aes_save(current, next))
 		{
 			list_destroy(current);
 			fclose(file);
