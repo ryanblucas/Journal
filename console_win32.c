@@ -26,9 +26,10 @@ static COORD size;
 static CHAR_INFO* buffer;
 static coords_t cursor, camera;
 static list_t lines;
-static char current_directory[MAX_PATH];
-static file_type_t current_type;
 static const char* footer_message;
+
+static file_details_t current_file;
+static char dir_buf[MAX_PATH];
 
 static list_t actions;
 static list_t undid_actions;
@@ -94,7 +95,7 @@ bool console_is_created(void)
 const file_details_t console_file(void)
 {
 	assert(console_is_created());
-	return (file_details_t) { .directory = current_directory, .lines = lines, .type = current_type };
+	return current_file;
 }
 
 list_t console_lines(void)
@@ -158,15 +159,16 @@ void console_set_file_details(const file_details_t details)
 	for (int i = 0; i < list_count(details.lines); i++)
 		assert(LIST_GET(details.lines, i, line_t)->string && list_element_size(LIST_GET(details.lines, i, line_t)->string) == sizeof(char));
 
-	editor_destroy_lines(lines);
-	list_clear(lines);
+	editor_destroy_lines(current_file.lines);
+	list_clear(current_file.lines);
 	list_concat(lines, details.lines, 0);
 	console_move_cursor((coords_t) { 0, 0 });
 
 	console_set_title(details.directory);
 
-	strncpy(current_directory, details.directory, sizeof current_directory);
-	current_type = details.type;
+	strncpy(dir_buf, details.directory, sizeof dir_buf);
+	current_file.directory = dir_buf;
+	current_file.type = details.type;
 
 	selecting = false;
 }
@@ -283,6 +285,8 @@ bool console_create(void)
 	actions = list_create(sizeof(action_t));
 	undid_actions = list_create(sizeof(action_t));
 
+	current_file.lines = lines;
+
 	DEBUG_ON_FAILURE(console_invalidate()); /* If it fails to draw, then it's not really an initialization problem like one might expect from a false return value */
 	return true;
 }
@@ -339,7 +343,7 @@ static char* console_open_file_dialog(bool does_file_exist)
 		.lStructSize =		sizeof settings,
 		.lpstrFilter =		"Journal Text Files (.txt, .dmc, .aes)\0*.txt;*.dmc;*.aes\0\0",
 		.nFilterIndex =		1,
-		.lpstrInitialDir =	current_directory,
+		.lpstrInitialDir =	current_file.directory,
 		.lpstrFile =		buf,
 		.nMaxFile =			sizeof buf,
 	};
@@ -527,22 +531,22 @@ static bool console_handle_control_event(int ch, bool shifting)
 		return true;
 
 	case 'S':
-		if (!current_directory || shifting)
+		if (!current_file.directory || shifting)
 		{
 			const char* dir = console_open_file_dialog(false);
 			if (!dir)
 				return true;
-			current_type = file_extension_to_type(dir);
-			strncpy(current_directory, dir, MAX_PATH);
-			console_set_title(current_directory);
+			current_file.type = file_extension_to_type(dir);
+			strncpy(dir_buf, dir, MAX_PATH);
+			current_file.directory = dir_buf;
+			console_set_title(current_file.directory);
 		}
-		debug_format("Saving file \"%s\" with type %i.\n", current_directory, current_type);
-		bool result = DEBUG_ON_FAILURE(user_save_file((file_save_t) { .directory = current_directory, .cursor = cursor })) &&
-			DEBUG_ON_FAILURE(file_save((file_details_t) { .directory = current_directory, .lines = lines, .type = current_type }));
+		debug_format("Saving file \"%s\" with type %i.\n", current_file.directory, current_file.type);
+		bool result = DEBUG_ON_FAILURE(user_save_file((file_save_t) { .directory = current_file.directory, .cursor = cursor })) &&
+			DEBUG_ON_FAILURE(file_save(current_file));
+		footer_message = "Saved file.";
 		if (!result)
 			footer_message = "Failed to save file.";
-		else
-			footer_message = "Saved file.";
 		return result;
 	}
 	return true;
