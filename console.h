@@ -88,22 +88,22 @@ void console_clear_buffer(void);
 /* returns once user escapes */
 void console_loop(void);
 /* handles an arrow key action */
-bool console_arrow_key(bool shifting, int dc, int dr);
+void console_arrow_key(bool shifting, int dc, int dr);
 /* handles a DEL key command */
-bool console_delete(void);
+void console_delete(void);
 /* handles a BKSPC key command */
-bool console_backspace(void);
+void console_backspace(void);
 /* handles an enter/return key command */
-bool console_return(void);
+void console_return(void);
 /* handles a tab key command */
-bool console_tab(void);
+void console_tab(void);
 /* handles adding a character */
-bool console_character(int ch);
+void console_character(int ch);
 /* copies to clipboard -- has nothing to add to an action buffer */
 bool console_copy(void);
 /* pastes from clipboard to current position */
 bool console_paste(void);
 /* puts action to undo in out (IF NOT NULL) and then undoes it */
-bool console_undo(action_t* out);
+void console_undo(action_t* out);
 /* redoes last undo and puts that action in out (IF NOT NULL) */
-bool console_redo(action_t* out);
+void console_redo(action_t* out);

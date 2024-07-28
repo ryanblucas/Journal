@@ -359,11 +359,10 @@ bool console_copy(void)
 	return console_set_clipboard(list_element_array(str), list_count(str));
 }
 
-static inline bool console_commit_action(action_t action)
+static inline void console_commit_action(action_t action)
 {
 	LIST_PUSH(actions, action);
 	list_clear(undid_actions);
-	return true;
 }
 
 /* pastes from clipboard to current position */
@@ -383,7 +382,7 @@ bool console_paste(void)
 	char* str_copy = journal_malloc(list_count(str));
 	strncpy(str_copy, list_element_array(str), list_count(str));
 	list_destroy(str);
-	return console_commit_action((action_t) 
+	console_commit_action((action_t) 
 	{
 		.coupled = was_selecting,
 		.cursor = prev,
@@ -392,14 +391,15 @@ bool console_paste(void)
 		.did_remove = false,
 		.str = str_copy
 	});
+	return true;
 }
 
-static bool console_generic_do(bool direction, action_t* out)
+static void console_generic_do(bool direction, action_t* out)
 {
 	assert(console_is_created());
 	list_t buffer = direction ? undid_actions : actions, other = direction ? actions : undid_actions;
 	if (list_count(buffer) <= 0)
-		return true;
+		return;
 
 	int other_add = list_count(other);
 	action_t head, curr;
@@ -421,21 +421,20 @@ static bool console_generic_do(bool direction, action_t* out)
 	} while (curr.coupled && (list_pop(buffer, &curr), true));
 	if (out)
 		*out = head;
-	return true;
 }
 
 /* puts action to undo in out (IF NOT NULL) and then undoes it */
-bool console_undo(action_t* out)
+void console_undo(action_t* out)
 {
 	assert(console_is_created());
-	return console_generic_do(false, out);
+	console_generic_do(false, out);
 }
 
 /* redoes last undo and puts that action in out (IF NOT NULL) */
-bool console_redo(action_t* out)
+void console_redo(action_t* out)
 {
 	assert(console_is_created());
-	return console_generic_do(true, out);
+	console_generic_do(true, out);
 }
 
 #define CONSOLE_COLOR_CHOICES "Black\nDark blue\nDark green\nDark cyan\nDark red\nDark purple\nDark yellow\nLight gray\nDark gray\nLight blue\nLight green\nLight cyan\nLight red\nLight purple\nLight yellow\nWhite"
@@ -484,9 +483,9 @@ static bool console_handle_control_event(int ch, bool shifting)
 	case 'V':
 		return console_paste();
 	case 'Y':
-		return console_redo(NULL);
+		console_redo(NULL);
 	case 'Z':
-		return console_undo(NULL);
+		console_undo(NULL);
 	case 'P':
 		console_prompt_user("Enter password: ", file_set_password);
 		break;
@@ -550,7 +549,7 @@ static bool console_handle_control_event(int ch, bool shifting)
 }
 
 /* handles an arrow key action */
-bool console_arrow_key(bool shifting, int dc, int dr)
+void console_arrow_key(bool shifting, int dc, int dr)
 {
 	assert(console_is_created());
 	coords_t new_cursor = cursor, begin, end;
@@ -571,10 +570,9 @@ bool console_arrow_key(bool shifting, int dc, int dr)
 	/* increment after overflow, otherwise if the line is too short, it will overflow into another row */
 	new_cursor.row += dr;
 	console_move_cursor(new_cursor);
-	return true;
 }
 
-static bool console_act_delete_selection(void)
+static void console_act_delete_selection(void)
 {
 	coords_t start, end, prev = cursor;
 	list_t str = list_create(sizeof(char));
@@ -586,10 +584,10 @@ static bool console_act_delete_selection(void)
 	strncpy(str_copy, (char*)list_element_array(str), list_count(str));
 	list_destroy(str);
 	action_t action = { .cursor = prev, .start = start, .end = end, .did_remove = true, .str = str_copy };
-	return console_commit_action(action);
+	console_commit_action(action);
 }
 
-static bool console_act_delete_char(coords_t prev)
+static void console_act_delete_char(coords_t prev)
 {
 	char newline = '\n';
 	char* deleted = LIST_GET(LIST_GET(lines, cursor.row, line_t)->string, cursor.column, char);
@@ -609,41 +607,39 @@ static bool console_act_delete_char(coords_t prev)
 	deleted_copy[0] = *deleted;
 	deleted_copy[1] = '\0';
 	action_t action = { .cursor = prev, .start = cursor, .end = cursor, .did_remove = true, .str = deleted_copy };
-	return console_commit_action(action);
+	console_commit_action(action);
 }
 
 /* handles a DEL key command */
-bool console_delete(void)
+void console_delete(void)
 {
 	assert(console_is_created());
 	if (selecting)
-		return console_act_delete_selection();
+		console_act_delete_selection();
 	else if (cursor.column < list_count(LIST_GET(lines, cursor.row, line_t)->string) || cursor.row + 1 < list_count(lines))
-		return console_act_delete_char(cursor);
-	return true;
+		console_act_delete_char(cursor);
 }
 
 /* handles a BKSPC key command */
-bool console_backspace(void)
+void console_backspace(void)
 {
 	assert(console_is_created());
 	coords_t start = cursor;
 	if (selecting)
-		return console_act_delete_selection();
+		console_act_delete_selection();
 	else if (cursor.column != 0 || cursor.row != 0)
 	{
 		cursor = editor_overflow_cursor(lines, (coords_t) { .column = cursor.column - 1, .row = cursor.row });
-		return console_act_delete_char(start);
+		console_act_delete_char(start);
 	}
-	return true;
 }
 
 /* handles an enter/return key command */
-bool console_return(void)
+void console_return(void)
 {
 	assert(console_is_created());
 	if (selecting)
-		return console_act_delete_selection();
+		console_act_delete_selection();
 	else
 	{
 		char* newline = journal_malloc(sizeof(char) * 2);
@@ -653,40 +649,35 @@ bool console_return(void)
 		action_t action = { .cursor = cursor, .did_remove = false, .start = cursor, .end = cursor, .str = newline };
 		editor_add_newline(lines, cursor);
 		console_move_cursor(end);
-		return console_commit_action(action);
+		console_commit_action(action);
 	}
 }
 
 /* handles a tab key command */
-bool console_tab(void)
+void console_tab(void)
 {
 	assert(console_is_created());
-	if (selecting && !console_act_delete_selection())
-		return false;
+	if (selecting)
+		console_act_delete_selection();
 	coords_t start = cursor, end = start;
 	int tabc = TAB_SIZE - cursor.column % TAB_SIZE;
 	char* tab_str = journal_malloc(tabc + 1);
-	if (!tab_str)
-		return false;
 	memset(tab_str, ' ', tabc);
 	tab_str[tabc] = '\0';
 	editor_add_raw(lines, tab_str, &end);
 
 	console_move_cursor(end);
 	action_t action = { .cursor = start, .did_remove = false, .start = start, .end = end, .str = tab_str };
-	return console_commit_action(action);
+	console_commit_action(action);
 }
 
 /* handles adding a character */
-bool console_character(int ch)
+void console_character(int ch)
 {
 	assert(console_is_created());
 	bool was_selecting = selecting;
 	if (selecting)
-	{
-		if (!console_act_delete_selection())
-			return false;
-	}
+		console_act_delete_selection();
 	coords_t start = cursor;
 	if (ch == '\n')
 		editor_add_newline(lines, cursor);
@@ -696,7 +687,7 @@ bool console_character(int ch)
 	str[0] = (char)ch;
 	str[1] = '\0';
 	action_t action = { .cursor = start, .did_remove = false, .start = start, .end = start, .str = str, .coupled = was_selecting };
-	return console_commit_action(action);
+	console_commit_action(action);
 }
 
 static bool console_handle_key_event(KEY_EVENT_RECORD ker)
@@ -715,23 +706,23 @@ static bool console_handle_key_event(KEY_EVENT_RECORD ker)
 
 	case VK_DOWN:
 	case VK_UP:
-		result = console_arrow_key(ker.dwControlKeyState & SHIFT_PRESSED, 0, ker.wVirtualKeyCode - 0x27);
+		console_arrow_key(ker.dwControlKeyState & SHIFT_PRESSED, 0, ker.wVirtualKeyCode - 0x27);
 		break;
 	case VK_RIGHT:
 	case VK_LEFT:
-		result = console_arrow_key(ker.dwControlKeyState & SHIFT_PRESSED, ker.wVirtualKeyCode - 0x26, 0);
+		console_arrow_key(ker.dwControlKeyState & SHIFT_PRESSED, ker.wVirtualKeyCode - 0x26, 0);
 		break;
 	case VK_DELETE:
-		result = console_delete();
+		console_delete();
 		break;
 	case VK_BACK:
-		result = console_backspace();
+		console_backspace();
 		break;
 	case VK_RETURN:
-		result = console_return();
+		console_return();
 		break;
 	case VK_TAB:
-		result = console_tab();
+		console_tab();
 		break;
 
 	default:
@@ -740,7 +731,7 @@ static bool console_handle_key_event(KEY_EVENT_RECORD ker)
 		if (ker.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED))
 			result = console_handle_control_event(ker.wVirtualKeyCode, ker.dwControlKeyState & SHIFT_PRESSED);
 		else
-			result = console_character(ker.uChar.AsciiChar);
+			console_character(ker.uChar.AsciiChar);
 		break;
 	}
 
@@ -749,7 +740,7 @@ static bool console_handle_key_event(KEY_EVENT_RECORD ker)
 	return result;
 }
 
-static bool console_handle_mouse_event(MOUSE_EVENT_RECORD mer)
+static void console_handle_mouse_event(MOUSE_EVENT_RECORD mer)
 { 
 	static bool mouse_state = false;
 	if (mer.dwEventFlags == 0) /* mouse down or up */
@@ -766,7 +757,6 @@ static bool console_handle_mouse_event(MOUSE_EVENT_RECORD mer)
 		selecting = true;
 		console_move_cursor((coords_t) { mer.dwMousePosition.X + camera.column, mer.dwMousePosition.Y + camera.row });
 	}
-	return true;
 }
 
 static bool console_handle_mcq_prompt(INPUT_RECORD record)
@@ -802,7 +792,7 @@ static bool console_handle_mcq_prompt(INPUT_RECORD record)
 		break;
 	}
 	case MOUSE_EVENT:
-		DEBUG_ON_FAILURE(console_handle_mouse_event(record.Event.MouseEvent));
+		console_handle_mouse_event(record.Event.MouseEvent);
 		selecting = false;
 		break;
 	}
@@ -821,7 +811,7 @@ static bool console_handle_response_prompt(INPUT_RECORD record)
 		break;
 	}
 	case MOUSE_EVENT:
-		DEBUG_ON_FAILURE(console_handle_mouse_event(record.Event.MouseEvent));
+		console_handle_mouse_event(record.Event.MouseEvent);
 		break;
 	}
 
@@ -867,7 +857,7 @@ void console_loop(void)
 		else if (record.EventType == KEY_EVENT)
 			DEBUG_ON_FAILURE(console_handle_key_event(record.Event.KeyEvent));
 		else if (record.EventType == MOUSE_EVENT)
-			DEBUG_ON_FAILURE(console_handle_mouse_event(record.Event.MouseEvent));
+			console_handle_mouse_event(record.Event.MouseEvent);
 
 		console_invalidate();
 	}
