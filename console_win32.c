@@ -36,7 +36,7 @@ static list_t undid_actions;
 static bool selecting;
 static coords_t selection_begin;
 
-static const char* prompt;
+static int prompt_len;
 static prompt_callback_t callback;
 static list_t prev_lines;
 static coords_t prev_cursor;
@@ -45,21 +45,45 @@ static coords_t prev_cursor;
 static bool console_invalidate(void);
 
 /* pauses application to ask user with prompt, calls callback when done and frees string passed after. */
-bool console_prompt_user(const char* _prompt, prompt_callback_t _callback)
+void console_prompt_user(const char* prompt, prompt_callback_t _callback)
 {
 	assert(console_is_created());
 	prev_lines = lines;
 	lines = list_create(sizeof(line_t));
-	line_t line = { .string = list_create_with_array(_prompt, sizeof(char), (int)strnlen(_prompt, CONSOLE_MAX_PROMPT_LEN)) };
+	line_t line = { .string = list_create_with_array(prompt, sizeof(char), (int)strnlen(prompt, CONSOLE_MAX_PROMPT_LEN)) };
 	LIST_PUSH(lines, line);
 
-	prompt = _prompt;
+	prompt_len = list_count(line.string);
 	callback = _callback;
 	prev_cursor = cursor;
 
 	selecting = false;
 	console_move_cursor((coords_t) { .column = list_count(line.string) });
-	return true;
+}
+
+/*	pauses application to ask user with prompt and series of possible choices.
+	prompt is a string delimited by a newline. First line is the question, other lines are choices. */
+void console_prompt_user_mc(const char* prompt, prompt_callback_t _callback)
+{
+	assert(console_is_created());
+	prev_lines = lines;
+	lines = editor_create_lines();
+	coords_t temp = (coords_t){ 0 };
+	editor_add_raw(lines, prompt, &temp);
+
+	/* inline choices */
+	for (int i = 1; i < list_count(lines); i++)
+	{
+		temp = (coords_t){ .column = 0, .row = i };
+		editor_add_tab(lines, &temp);
+	}
+
+	console_move_cursor((coords_t) { .row = 1, .column = TAB_SIZE });
+
+	prompt_len = list_count(LIST_GET(lines, 0, line_t)->string);
+	callback = _callback;
+	prev_cursor = cursor;
+	selecting = false;
 }
 
 bool console_is_created(void)
@@ -298,10 +322,10 @@ static bool console_paste_selection(void)
 		return false;
 	}
 
-	bool result = editor_add_raw(lines, list_element_array(str), &cursor);
+	editor_add_raw(lines, list_element_array(str), &cursor);
 	console_move_cursor(editor_overflow_cursor(lines, (coords_t) { .column = cursor.column + 1, .row = cursor.row }));
 	list_destroy(str);
-	return result;
+	return true;
 }
 
 static char* console_open_file_dialog(bool does_file_exist)
@@ -390,8 +414,7 @@ static bool console_generic_do(bool direction, action_t* out)
 		else
 		{
 			coords_t temp = curr.start;
-			if (!editor_add_raw(lines, curr.str, &temp))
-				return false;
+			editor_add_raw(lines, curr.str, &temp);
 		}
 		console_move_cursor(curr.cursor);
 		LIST_ADD(other, curr, other_add);
@@ -415,6 +438,43 @@ bool console_redo(action_t* out)
 	return console_generic_do(true, out);
 }
 
+#define CONSOLE_COLOR_CHOICES "Black\nDark blue\nDark green\nDark cyan\nDark red\nDark purple\nDark yellow\nLight gray\nDark gray\nLight blue\nLight green\nLight cyan\nLight red\nLight purple\nLight yellow\nWhite"
+
+static color_t foreground;
+
+static inline color_t console_to_color(const char* color)
+{
+	/*	trailing new line because response_curr needs to be equal to 0; but if the user picks the last option, 
+		response_curr will advance past that NUL terminator since choice_curr ends in that too */
+	const char* choice_curr = CONSOLE_COLOR_CHOICES "\n";
+	int i;
+	for (i = 0; i < 16; i++)
+	{
+		const char* response_curr = color;
+		while (*choice_curr != '\n')
+		{
+			if (*choice_curr++ == *response_curr)
+				response_curr++;
+		}
+		choice_curr++;
+		if (*response_curr == '\0')
+			break;
+	}
+	assert(i < 16);
+	return (color_t)i;
+}
+
+static void console_handle_background(const char* response)
+{
+	user_attribute = CONSOLE_CREATE_ATTRIBUTE(foreground, console_to_color(response));
+}
+
+static void console_handle_foreground(const char* response)
+{
+	foreground = console_to_color(response);
+	console_prompt_user_mc("Background color:\n" CONSOLE_COLOR_CHOICES, console_handle_background);
+}
+
 static bool console_handle_control_event(int ch, bool shifting)
 {
 	switch (ch)
@@ -429,6 +489,9 @@ static bool console_handle_control_event(int ch, bool shifting)
 		return console_undo(NULL);
 	case 'P':
 		console_prompt_user("Enter password: ", file_set_password);
+		break;
+	case 'U':
+		console_prompt_user_mc("Text color:\n" CONSOLE_COLOR_CHOICES, console_handle_foreground);
 		break;
 
 	case 'A':
@@ -607,8 +670,7 @@ bool console_tab(void)
 		return false;
 	memset(tab_str, ' ', tabc);
 	tab_str[tabc] = '\0';
-	if (!editor_add_raw(lines, tab_str, &end))
-		return false;
+	editor_add_raw(lines, tab_str, &end);
 
 	console_move_cursor(end);
 	action_t action = { .cursor = start, .did_remove = false, .start = start, .end = end, .str = tab_str };
@@ -707,6 +769,67 @@ static bool console_handle_mouse_event(MOUSE_EVENT_RECORD mer)
 	return true;
 }
 
+static bool console_handle_mcq_prompt(INPUT_RECORD record)
+{
+	switch (record.EventType)
+	{
+	case KEY_EVENT:
+	{
+		if (!record.Event.KeyEvent.bKeyDown)
+			break;
+
+		int vk = record.Event.KeyEvent.wVirtualKeyCode;
+		if (vk == VK_UP || vk == VK_DOWN)
+			console_arrow_key(false, 0, vk - 0x27);
+		else if (vk == VK_LEFT || vk == VK_RIGHT)
+			console_arrow_key(false, vk - 0x26, 0);
+		else if (vk == VK_RETURN && cursor.row != 0) /* row 0 = the question line */
+		{
+			/* delete choices beyond the one selected */
+			editor_delete_region(lines, (coords_t) 
+			{ 
+				.column = list_count(LIST_GET(lines, cursor.row, line_t)->string), 
+				.row = cursor.row 
+			}, (coords_t) 
+			{ 
+				.column = list_count(LIST_GET(lines, list_count(lines) - 1, line_t)->string) - 1,
+				.row = list_count(lines) - 1
+			});
+			/* delete choices before but keep the prompt */
+			editor_delete_region(lines, (coords_t) { .column = prompt_len, .row = 0 }, (coords_t) { .column = TAB_SIZE - 1, .row = cursor.row });
+			return true;
+		}
+		break;
+	}
+	case MOUSE_EVENT:
+		DEBUG_ON_FAILURE(console_handle_mouse_event(record.Event.MouseEvent));
+		selecting = false;
+		break;
+	}
+	return false;
+}
+
+static bool console_handle_response_prompt(INPUT_RECORD record)
+{
+	switch (record.EventType)
+	{
+	case KEY_EVENT:
+	{
+		DEBUG_ON_FAILURE(console_handle_key_event(record.Event.KeyEvent));
+		if (record.Event.KeyEvent.wVirtualKeyCode == VK_RETURN)
+			list_remove(lines, cursor.row); /* remove new line */
+		break;
+	}
+	case MOUSE_EVENT:
+		DEBUG_ON_FAILURE(console_handle_mouse_event(record.Event.MouseEvent));
+		break;
+	}
+
+	cursor.column = max(cursor.column, prompt_len);
+	selection_begin.column = max(selection_begin.column, prompt_len);
+	return cursor.row >= 1;
+}
+
 /* returns once user escapes */
 void console_loop(void)
 {
@@ -718,40 +841,34 @@ void console_loop(void)
 	{
 		assert(read == 1);
 		DEBUG_ON_FAILURE(console_handle_potential_resize());
-		switch (record.EventType)
-		{
-		case KEY_EVENT:
-			DEBUG_ON_FAILURE(console_handle_key_event(record.Event.KeyEvent));
-			if (callback && record.Event.KeyEvent.wVirtualKeyCode == VK_RETURN)
-				list_remove(lines, cursor.row); /* remove new line */
-			break;
-		case MOUSE_EVENT:
-			DEBUG_ON_FAILURE(console_handle_mouse_event(record.Event.MouseEvent));
-			break;
-		}
+
 		if (callback)
 		{
-			int len = (int)strnlen(prompt, CONSOLE_MAX_PROMPT_LEN);
-			cursor.column = max(cursor.column, len);
-			selection_begin.column = max(selection_begin.column, len);
-			if (cursor.row >= 1)
+			/* if prompting the user a multiple choice, list count will always be > 1 */
+			if (((list_count(lines) <= 1 && console_handle_response_prompt(record))
+				|| (list_count(lines) > 1 && console_handle_mcq_prompt(record))))
 			{
 				list_t str = list_create(sizeof(char));
 				editor_copy_all_lines(lines, str);
-				callback((char*)list_element_array(str) + len);
-				list_destroy(str);
-
 				editor_destroy_lines(lines);
 				list_destroy(lines);
-
 				lines = prev_lines;
 				console_move_cursor(prev_cursor);
-
 				prev_lines = NULL;
-				prompt = NULL;
-				callback = NULL;
+
+				prompt_callback_t curr = callback;
+				curr((char*)list_element_array(str) + prompt_len);
+				list_destroy(str);
+
+				if (curr == callback)
+					callback = NULL;
 			}
 		}
+		else if (record.EventType == KEY_EVENT)
+			DEBUG_ON_FAILURE(console_handle_key_event(record.Event.KeyEvent));
+		else if (record.EventType == MOUSE_EVENT)
+			DEBUG_ON_FAILURE(console_handle_mouse_event(record.Event.MouseEvent));
+
 		console_invalidate();
 	}
 }

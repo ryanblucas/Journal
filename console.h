@@ -42,7 +42,10 @@ typedef struct action
 typedef void (*prompt_callback_t)(const char*);
 
 /* pauses application to ask user with prompt, calls callback when done and frees string passed after. */
-bool console_prompt_user(const char* prompt, prompt_callback_t callback);
+void console_prompt_user(const char* prompt, prompt_callback_t callback);
+/*	pauses application to ask user with prompt and series of possible choices.
+	prompt is a string delimited by a newline. First line is the question, other lines are choices. */
+void console_prompt_user_mc(const char* prompt, prompt_callback_t callback);
 
 bool console_is_created(void);
 const file_details_t console_file(void);

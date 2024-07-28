@@ -75,7 +75,7 @@ void editor_add_newline(list_t lines, coords_t position)
 }
 
 /* copies raw string at position, incrementing position coords accordingly. Formats tabs */
-bool editor_add_raw(list_t lines, const char* raw, coords_t* position)
+void editor_add_raw(list_t lines, const char* raw, coords_t* position)
 {
 	assert(IS_LIST_VALID(lines) && raw && editor_is_valid_cursor(lines, *position));
 	int ch;
@@ -95,7 +95,6 @@ bool editor_add_raw(list_t lines, const char* raw, coords_t* position)
 			LIST_ADD(LIST_GET(lines, position->row, line_t)->string, (char)ch, position->column++);
 	}
 	position->column--;
-	return true;
 }
 
 /* adds tab at position in line list, incrementing position coords accordingly */
@@ -103,7 +102,7 @@ bool editor_add_tab(list_t lines, coords_t* position)
 {
 	assert(IS_LIST_VALID(lines) && editor_is_valid_cursor(lines, *position));
 	list_t str = LIST_GET(lines, position->row, line_t)->string;
-	int tabc = TAB_SIZE - list_count(str) % TAB_SIZE;
+	int tabc = TAB_SIZE - position->column % TAB_SIZE;
 	for (int i = 0; i < tabc; i++)
 		list_add_primitive(str, (void*)' ', i + position->column);
 	position->column += tabc - 1;

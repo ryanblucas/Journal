@@ -130,7 +130,7 @@ file_details_t file_open(const char* directory)
 	coords_t temp = { 0 };
 	bool result = editor_format_raw(current);
 	list_push_primitive(current, (void*)'\0');
-	result &= editor_add_raw(lines, list_element_array(current), &temp);
+	editor_add_raw(lines, list_element_array(current), &temp);
 
 	list_destroy(current);
 	if (!result)
