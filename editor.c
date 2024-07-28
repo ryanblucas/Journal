@@ -228,9 +228,9 @@ void editor_delete_region(list_t lines, coords_t begin, coords_t end)
 }
 
 /* adds character position to cursor */
-coords_t editor_add_character_position(list_t lines, coords_t cursor, int addend)
+coords_t editor_overflow_cursor(list_t lines, coords_t cursor)
 {
-	cursor.column += addend;
+	cursor.row = min(max(0, cursor.row), list_count(lines) - 1);
 	while (cursor.row > 0 && cursor.column < 0)
 	{
 		cursor.row--;

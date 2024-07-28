@@ -56,6 +56,7 @@ bool console_prompt_user(const char* _prompt, prompt_callback_t _callback)
 	callback = _callback;
 	prev_cursor = cursor;
 
+	selecting = false;
 	console_move_cursor((coords_t) { .column = list_count(line.string) });
 	return true;
 }
@@ -301,7 +302,7 @@ static bool console_paste_selection(void)
 	}
 
 	bool result = editor_add_raw(lines, list_element_array(str), &cursor);
-	console_move_cursor(editor_add_character_position(lines, cursor, 1));
+	console_move_cursor(editor_overflow_cursor(lines, (coords_t) { .column = cursor.column + 1, .row = cursor.row }));
 	list_destroy(str);
 	return result;
 }
@@ -359,8 +360,15 @@ bool console_paste(void)
 	char* str_copy = journal_malloc(list_count(str));
 	strncpy(str_copy, list_element_array(str), list_count(str));
 	list_destroy(str);
-	action_t action = { .coupled = was_selecting, .cursor = prev, .start = prev, .end = editor_add_character_position(lines, cursor, -1), .did_remove = false, .str = str_copy };
-	return console_commit_action(action);
+	return console_commit_action((action_t) 
+	{
+		.coupled = was_selecting,
+		.cursor = prev,
+		.start = prev,
+		.end = editor_overflow_cursor(lines, (coords_t) { .column = cursor.column - 1, .row = cursor.row }),
+		.did_remove = false,
+		.str = str_copy
+	});
 }
 
 static bool console_generic_do(bool direction, action_t* out)
@@ -497,7 +505,8 @@ bool console_arrow_key(bool shifting, int dc, int dr)
 		else
 			new_cursor = end;
 	}
-	new_cursor = editor_add_character_position(lines, cursor, dc);
+	new_cursor = editor_overflow_cursor(lines, (coords_t) { .column = new_cursor.column + dc, .row = new_cursor.row });
+	/* increment after overflow, otherwise if the line is too short, it will overflow into another row */
 	new_cursor.row += dr;
 	console_move_cursor(new_cursor);
 	return true;
@@ -588,7 +597,7 @@ bool console_backspace(void)
 		return console_act_delete_selection();
 	else if (cursor.column != 0 || cursor.row != 0)
 	{
-		cursor = editor_add_character_position(lines, cursor, -1);
+		cursor = editor_overflow_cursor(lines, (coords_t) { .column = cursor.column - 1, .row = cursor.row });
 		return console_act_delete_char(start);
 	}
 	return true;
@@ -789,7 +798,7 @@ bool console_get_selection_region(coords_t* begin, coords_t* end)
 		*end = cursor;
 	}
 	bool is_selecting = selection_begin.row != cursor.row || selection_begin.column != cursor.column;
-	*end = editor_add_character_position(lines, *end, -1);
+	*end = editor_overflow_cursor(lines, (coords_t) { .column = end->column - 1, .row = end->row });
 	return selecting && is_selecting;
 }
 
@@ -801,7 +810,7 @@ bool console_copy_selection_string(list_t str)
 	if (!console_get_selection_region(&begin_coords, &end_coords))
 	{
 		list_push_primitive(str, 0);
-		return;
+		return true;
 	}
 	return editor_copy_region(lines, str, begin_coords, end_coords);
 }
