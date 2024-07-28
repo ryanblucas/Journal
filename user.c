@@ -234,16 +234,15 @@ bool user_save_file(file_save_t save)
 			file_save_t temp = *LIST_GET(user.file_saves, i, file_save_t);
 			list_remove(user.file_saves, i);
 			temp.cursor = save.cursor;
-			if (!LIST_ADD(user.file_saves, temp, 0))
-				return false;
+			LIST_ADD(user.file_saves, temp, 0);
 			was_added = true;
 			break;
 		}
 	}
 
 	/* otherwise, add it */
-	if (!was_added && !LIST_ADD(user.file_saves, save, 0))
-		return false;
+	if (!was_added)
+		LIST_ADD(user.file_saves, save, 0);
 
 	/* save list to disk */
 	return user_save(user);

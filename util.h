@@ -53,7 +53,7 @@ bool list_reserve(list_t list, int count);
 bool list_push(list_t list, const void* element);
 void list_pop(list_t list, void* out);
 bool list_concat(list_t list, const list_t other, int pos);
-bool list_add(list_t list, const void* element, int pos);
+void list_add(list_t list, const void* element, int pos);
 void list_remove(list_t list, int pos);
 void list_splice(list_t list, int start, int end);
 void list_clear(list_t list);

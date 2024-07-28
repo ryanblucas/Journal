@@ -623,8 +623,7 @@ bool console_return(void)
 		newline[1] = '\0';
 		coords_t end = (coords_t){ 0, cursor.row + 1 };
 		action_t action = { .cursor = cursor, .did_remove = false, .start = cursor, .end = cursor, .str = newline };
-		if (!editor_add_newline(lines, cursor))
-			return false;
+		editor_add_newline(lines, cursor);
 		console_move_cursor(end);
 		return console_commit_action(action);
 	}

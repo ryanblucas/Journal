@@ -64,7 +64,7 @@ int editor_compare_cursors(coords_t a, coords_t b)
 }
 
 /* adds new line character at position, splitting the line at position in two */
-bool editor_add_newline(list_t lines, coords_t position)
+void editor_add_newline(list_t lines, coords_t position)
 {
 	assert(IS_LIST_VALID(lines) && editor_is_valid_cursor(lines, position));
 	list_t string = LIST_GET(lines, position.row, line_t)->string, new_string;
@@ -76,7 +76,7 @@ bool editor_add_newline(list_t lines, coords_t position)
 	else
 		new_string = list_create(sizeof(char));
 	line_t new_line = { .string = new_string };
-	return LIST_ADD(lines, new_line, position.row + 1);
+	LIST_ADD(lines, new_line, position.row + 1);
 }
 
 /* copies raw string at position, incrementing position coords accordingly. Formats tabs */
@@ -96,8 +96,8 @@ bool editor_add_raw(list_t lines, const char* raw, coords_t* position)
 			editor_add_tab(lines, position);
 			position->column++;
 		}
-		else if (!LIST_ADD(LIST_GET(lines, position->row, line_t)->string, (char)ch, position->column++))
-			return false;
+		else
+			LIST_ADD(LIST_GET(lines, position->row, line_t)->string, (char)ch, position->column++);
 	}
 	position->column--;
 	return true;
