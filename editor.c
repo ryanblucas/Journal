@@ -143,8 +143,7 @@ int editor_copy_all_lines(const list_t lines, list_t str)
 	for (int i = 0; i < list_count(lines); i++)
 	{
 		list_t curr = LIST_GET(lines, i, line_t)->string;
-		if (!list_concat(str, curr, result))
-			return 0;
+		list_concat(str, curr, result);
 		list_push_primitive(str, (void*)'\n');
 		result += list_count(curr) + 1;
 	}
@@ -154,7 +153,7 @@ int editor_copy_all_lines(const list_t lines, list_t str)
 }
 
 /* writes to the out list as a string */
-bool editor_copy_region(const list_t lines, list_t out, coords_t begin_coords, coords_t end_coords)
+void editor_copy_region(const list_t lines, list_t out, coords_t begin_coords, coords_t end_coords)
 {
 	assert(
 		IS_LIST_VALID(lines) 
@@ -165,8 +164,7 @@ bool editor_copy_region(const list_t lines, list_t out, coords_t begin_coords, c
 		&& editor_compare_cursors(begin_coords, end_coords) <= 0);
 
 	const line_t* start = LIST_GET(lines, begin_coords.row, line_t), *end = LIST_GET(lines, end_coords.row, line_t);
-	if (!list_concat(out, start->string, 0))
-		return false;
+	list_concat(out, start->string, 0);
 	if (start != end)
 	{
 		list_splice_count(out, 0, begin_coords.column);
@@ -177,8 +175,7 @@ bool editor_copy_region(const list_t lines, list_t out, coords_t begin_coords, c
 			list_push_primitive(out, (void*)'\n');
 		}
 		int pos = list_count(out);
-		if (!list_concat(out, end->string, pos))
-			return false;
+		list_concat(out, end->string, pos);
 		list_splice_count(out, pos + end_coords.column + 1, list_count(end->string) - end_coords.column - 1);
 	}
 	else
@@ -186,12 +183,10 @@ bool editor_copy_region(const list_t lines, list_t out, coords_t begin_coords, c
 		list_splice_count(out, end_coords.column + 1, list_count(out) - end_coords.column - 1);
 		list_splice_count(out, 0, begin_coords.column);
 		if (end_coords.column == list_count(out))
-			return false;
-		list_push_primitive(out, (void*)'\n');
+			list_push_primitive(out, (void*)'\n');
 	}
 
 	list_push_primitive(out, (void*)'\0');
-	return true;
 }
 
 /* deletes region of lines */

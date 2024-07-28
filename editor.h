@@ -45,7 +45,7 @@ bool editor_format_raw(list_t str);
 /* formats and copies all lines to string */
 int editor_copy_all_lines(const list_t lines, list_t str);
 /* writes to the out list as a string */
-bool editor_copy_region(const list_t lines, list_t out, coords_t begin, coords_t end);
+void editor_copy_region(const list_t lines, list_t out, coords_t begin, coords_t end);
 /* deletes region of lines */
 void editor_delete_region(list_t lines, coords_t begin, coords_t end);
 

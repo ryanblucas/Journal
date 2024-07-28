@@ -71,7 +71,7 @@ void console_move_cursor(coords_t coords);
 /* returns false if there is no selection, otherwise sets pointers to cursor positions */
 bool console_get_selection_region(coords_t* begin, coords_t* end);
 /* sets contents of assumed empty list "str" to the contents of the selection */
-bool console_copy_selection_string(list_t str);
+void console_copy_selection_string(list_t str);
 /* deletes contents of selection */
 void console_delete_selection(void);
 

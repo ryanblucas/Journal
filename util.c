@@ -158,7 +158,7 @@ void list_pop(list_t list, void* out)
 		memcpy(out, &list->element_array[list->element_size * list->count], list->element_size);
 }
 
-bool list_concat(list_t list, const list_t other, int pos)
+void list_concat(list_t list, const list_t other, int pos)
 {
 	assert(list != NULL && other != NULL && pos >= 0 && pos <= list->count && other->element_size == list->element_size);
 	int bound = max(list->count + other->count, pos + other->count * 2);
@@ -168,7 +168,6 @@ bool list_concat(list_t list, const list_t other, int pos)
 	memmove(&list->element_array[(pos + other->count) * list->element_size], &list->element_array[pos * list->element_size], (size_t)other->count * list->element_size);
 	memcpy(&list->element_array[pos * list->element_size], other->element_array, (size_t)other->count * list->element_size);
 	list->count += other->count;
-	return true;
 }
 
 void list_add(list_t list, const void* element, int pos)

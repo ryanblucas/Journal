@@ -291,11 +291,7 @@ static bool console_handle_potential_resize(void)
 static bool console_copy_selection_to_clipboard(void)
 {
 	list_t str = list_create(sizeof(char));
-	if (!console_copy_selection_string(str))
-	{
-		list_destroy(str);
-		return false;
-	}
+	console_copy_selection_string(str);
 	return console_set_clipboard(list_element_array(str), list_count(str));
 }
 
@@ -551,13 +547,7 @@ static bool console_act_delete_selection(void)
 	coords_t start, end, prev = cursor;
 	list_t str = list_create(sizeof(char));
 	console_get_selection_region(&start, &end);
-
-	if (!console_copy_selection_string(str))
-	{
-		list_destroy(str);
-		return false;
-	}
-
+	console_copy_selection_string(str);
 	console_delete_selection();
 
 	char* str_copy = journal_malloc(list_count(str));
@@ -810,7 +800,7 @@ bool console_get_selection_region(coords_t* begin, coords_t* end)
 }
 
 /* sets contents of assumed empty list "str" to the contents of the selection */
-bool console_copy_selection_string(list_t str)
+void console_copy_selection_string(list_t str)
 {
 	assert(console_is_created() && str != NULL && list_count(str) == 0);
 	coords_t begin_coords, end_coords;
@@ -819,7 +809,7 @@ bool console_copy_selection_string(list_t str)
 		list_push_primitive(str, 0);
 		return true;
 	}
-	return editor_copy_region(lines, str, begin_coords, end_coords);
+	editor_copy_region(lines, str, begin_coords, end_coords);
 }
 
 /* deletes contents of selection */
@@ -910,7 +900,7 @@ static inline void console_draw_footer(void)
 		if (!buf)
 			buf = list_create(sizeof(char));
 		list_clear(buf);
-		DEBUG_ON_FAILURE(console_copy_selection_string(buf));
+		console_copy_selection_string(buf);
 		console_set_stringf(camera.row + size.Y - 1, camera.column + 48, footer_attribute, "Characters selected: %i", list_count(buf) - 1); /* -1 for NUL character */
 	}
 	if (footer_message)
