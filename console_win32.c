@@ -47,6 +47,7 @@ static bool console_invalidate(void);
 /* pauses application to ask user with prompt, calls callback when done and frees string passed after. */
 bool console_prompt_user(const char* _prompt, prompt_callback_t _callback)
 {
+	assert(console_is_created());
 	prev_lines = lines;
 	lines = list_create(sizeof(line_t));
 	line_t line = { .string = list_create_with_array(_prompt, sizeof(char), (int)strnlen(_prompt, CONSOLE_MAX_PROMPT_LEN)) };
@@ -288,13 +289,6 @@ static bool console_handle_potential_resize(void)
 	return DEBUG_ON_FAILURE(SetWindowPos(GetConsoleWindow(), NULL, 0, 0, fitted.right - fitted.left, fitted.bottom - fitted.top, SWP_NOMOVE));
 }
 
-static bool console_copy_selection_to_clipboard(void)
-{
-	list_t str = list_create(sizeof(char));
-	console_copy_selection_string(str);
-	return console_set_clipboard(list_element_array(str), list_count(str));
-}
-
 static bool console_paste_selection(void)
 {
 	list_t str = list_create(sizeof(char));
@@ -336,7 +330,9 @@ bool console_copy(void)
 	assert(console_is_created());
 	if (!selecting)
 		return true;
-	return console_copy_selection_to_clipboard();
+	list_t str = list_create(sizeof(char));
+	console_copy_selection_string(str);
+	return console_set_clipboard(list_element_array(str), list_count(str));
 }
 
 static inline bool console_commit_action(action_t action)
@@ -515,33 +511,6 @@ bool console_arrow_key(bool shifting, int dc, int dr)
 	return true;
 }
 
-static bool console_add_char_to_line(int ch, coords_t coords)
-{
-	assert(console_is_created() && coords.row < list_count(lines));
-	list_t string = LIST_GET(lines, coords.row, line_t)->string;
-	assert(list_count(string) >= coords.column);
-	if (ch == '\n')
-		editor_add_newline(lines, coords);
-	LIST_ADD(string, (char)ch, coords.column);
-	return true;
-}
-
-static bool console_remove_char_from_line(coords_t coords)
-{
-	assert(console_is_created() && coords.row < list_count(lines));
-	line_t* line = LIST_GET(lines, coords.row, line_t);
-	assert(coords.column <= list_count(line->string));
-	if (coords.column == list_count(line->string) && coords.row + 1 < list_count(lines))
-	{
-		list_concat(line->string, LIST_GET(lines, coords.row + 1, line_t)->string, list_count(line->string));
-		list_remove(lines, coords.row + 1);
-		return true;
-	}
-
-	list_remove(((line_t*)LIST_GET(lines, coords.row, line_t))->string, coords.column);
-	return true;
-}
-
 static bool console_act_delete_selection(void)
 {
 	coords_t start, end, prev = cursor;
@@ -564,8 +533,14 @@ static bool console_act_delete_char(coords_t prev)
 	if (!deleted)
 		deleted = &newline;
 
-	if (!console_remove_char_from_line(cursor))
-		return false;
+	line_t* line = LIST_GET(lines, cursor.row, line_t);
+	if (cursor.column == list_count(line->string) && cursor.row + 1 < list_count(lines))
+	{
+		list_concat(line->string, LIST_GET(lines, cursor.row + 1, line_t)->string, list_count(line->string));
+		list_remove(lines, cursor.row + 1);
+	}
+	else
+		list_remove(((line_t*)LIST_GET(lines, cursor.row, line_t))->string, cursor.column);
 
 	char* deleted_copy = journal_malloc(sizeof(char) * 2);
 	deleted_copy[0] = *deleted;
@@ -651,8 +626,9 @@ bool console_character(int ch)
 			return false;
 	}
 	coords_t start = cursor;
-	if (!console_add_char_to_line(ch, cursor))
-		return false;
+	if (ch == '\n')
+		editor_add_newline(lines, cursor);
+	LIST_ADD(LIST_GET(lines, cursor.row, line_t)->string, (char)ch, cursor.column);
 	console_move_cursor((coords_t) { cursor.column + 1, cursor.row });
 	char* str = journal_malloc(sizeof(char) * 2);
 	str[0] = (char)ch;
