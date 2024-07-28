@@ -143,8 +143,9 @@ int editor_copy_all_lines(const list_t lines, list_t str)
 	for (int i = 0; i < list_count(lines); i++)
 	{
 		list_t curr = LIST_GET(lines, i, line_t)->string;
-		if (!list_concat(str, curr, result) || !list_push_primitive(str, (void*)'\n'))
+		if (!list_concat(str, curr, result))
 			return 0;
+		list_push_primitive(str, (void*)'\n');
 		result += list_count(curr) + 1;
 	}
 	list_pop(str, NULL);
@@ -169,13 +170,11 @@ bool editor_copy_region(const list_t lines, list_t out, coords_t begin_coords, c
 	if (start != end)
 	{
 		list_splice_count(out, 0, begin_coords.column);
-		if (!list_push_primitive(out, (void*)'\n'))
-			return false;
+		list_push_primitive(out, (void*)'\n');
 		for (int i = begin_coords.row + 1; i < end_coords.row; i++)
 		{
-			if (!list_concat(out, LIST_GET(lines, i, line_t)->string, list_count(out))
-				|| !list_push_primitive(out, (void*)'\n'))
-				return false;
+			list_concat(out, LIST_GET(lines, i, line_t)->string, list_count(out));
+			list_push_primitive(out, (void*)'\n');
 		}
 		int pos = list_count(out);
 		if (!list_concat(out, end->string, pos))
@@ -186,11 +185,13 @@ bool editor_copy_region(const list_t lines, list_t out, coords_t begin_coords, c
 	{
 		list_splice_count(out, end_coords.column + 1, list_count(out) - end_coords.column - 1);
 		list_splice_count(out, 0, begin_coords.column);
-		if (end_coords.column == list_count(out) && !list_push_primitive(out, (void*)'\n'))
+		if (end_coords.column == list_count(out))
 			return false;
+		list_push_primitive(out, (void*)'\n');
 	}
 
-	return list_push_primitive(out, (void*)'\0');
+	list_push_primitive(out, (void*)'\0');
+	return true;
 }
 
 /* deletes region of lines */

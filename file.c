@@ -130,9 +130,9 @@ file_details_t file_open(const char* directory)
 	}
 
 	coords_t temp = { 0 };
-	bool result = editor_format_raw(current)
-		&& list_push_primitive(current, (void*)'\0')
-		&& editor_add_raw(lines, list_element_array(current), &temp);
+	bool result = editor_format_raw(current);
+	list_push_primitive(current, (void*)'\0');
+	result &= editor_add_raw(lines, list_element_array(current), &temp);
 
 	list_destroy(current);
 	if (!result)
@@ -673,10 +673,7 @@ static bool aes_save(const list_t in, list_t out)
 	for (int i = 0; i < KEY_SIZE; i++)
 		key[i] = rng->seed[rng->pos++] % 0x100;
 	for (int i = 0; i < 16; i++)
-	{
-		if (!list_push_primitive(out, (void*)(rng->seed[rng->pos++] % 0x100)))
-			return false;
-	}
+		list_push_primitive(out, (void*)(rng->seed[rng->pos++] % 0x100));
 	free(rng);
 
 	int size = list_count(in);
@@ -995,11 +992,7 @@ static bool dmc_save(const list_t in, list_t out)
 			{
 				if (bit)
 					max--;
-				if (!list_push_primitive(out, (void*)(min >> 16)))
-				{
-					free(state);
-					return false;
-				}
+				list_push_primitive(out, (void*)(min >> 16));
 				out_bytes++;
 				min = (min << 8) & 0xFFFF00;
 				max = (max << 8) & 0xFFFF00;
@@ -1017,12 +1010,11 @@ static bool dmc_save(const list_t in, list_t out)
 	}
 
 	min = max - 1;
-	bool result = list_push_primitive(out, (void*)(min >> 16))
-		&& list_push_primitive(out, (void*)((min >> 8) & 0xFF))
-		&& list_push_primitive(out, (void*)(min & 0xFF));
+	list_push_primitive(out, (void*)(min >> 16));
+	list_push_primitive(out, (void*)((min >> 8) & 0xFF));
+	list_push_primitive(out, (void*)(min & 0xFF));;
 
 	free(state);
-	if (result)
-		debug_format("Compressed file with Dynamic Markov Compression, in: %i, out: %i\n", in_bytes, out_bytes);
-	return result;
+	debug_format("Compressed file with Dynamic Markov Compression, in: %i, out: %i\n", in_bytes, out_bytes);
+	return true;
 }

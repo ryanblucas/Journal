@@ -58,14 +58,14 @@ void list_remove(list_t list, int pos);
 void list_splice(list_t list, int start, int end);
 void list_clear(list_t list);
 
-extern inline bool list_push_primitive(list_t list, void* primitive)
+extern inline void list_push_primitive(list_t list, void* primitive)
 {
-	return list_push(list, &primitive);
+	list_push(list, &primitive);
 }
 
-extern inline bool list_add_primitive(list_t list, void* primitive, int pos)
+extern inline void list_add_primitive(list_t list, void* primitive, int pos)
 {
-	return list_add(list, &primitive, pos);
+	list_add(list, &primitive, pos);
 }
 
 extern inline void list_splice_count(list_t list, int start, int count)
