@@ -64,9 +64,8 @@ static bool load_config(void)
 	}
 	console_set_file_details(default_file);
 	file_save_t save = { .cursor = (coords_t) { 0 }, .directory = default_file.directory };
-	if (LIST_PUSH(user.file_saves, save))
-		return true;
-	return false;
+	LIST_PUSH(user.file_saves, save);
+	return true;
 }
 
 int main(int argc, char** argv)

@@ -112,8 +112,7 @@ static list_t user_load_saves(const char* state, long pos, long size)
 		strncpy(current.directory, buf, dir_size);
 		read_int(state, i + dir_size, size, &current.cursor.column);
 		read_int(state, i + dir_size + INT_SIZE, size, &current.cursor.row);
-		if (!LIST_PUSH(result, current))
-			free(current.directory);
+		LIST_PUSH(result, current);
 	}
 	return result;
 }

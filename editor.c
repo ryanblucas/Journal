@@ -17,12 +17,7 @@ list_t editor_create_lines(void)
 {
 	list_t result = list_create(sizeof(line_t));
 	line_t elem = (line_t){ .string = list_create(sizeof(char)) };
-	if (!result || !elem.string || !LIST_PUSH(result, elem))
-	{
-		list_destroy(result);
-		list_destroy(elem.string);
-		return NULL;
-	}
+	LIST_PUSH(result, elem);
 	return result;
 }
 

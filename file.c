@@ -644,10 +644,7 @@ static bool aes_open(const list_t in, list_t out)
 		memcpy(chunk, buf + i, STATE_SIZE);
 		aes_decrypt_chunk(chunk, output, key);
 		for (int j = 0; j < STATE_SIZE; j++)
-		{
-			if (!LIST_PUSH(out, output[j]))
-				return false;
-		}
+			LIST_PUSH(out, output[j]);
 	}
 #if _DEBUG
 	debug_format("Opened file with AES using password \"%s\"\n", user_password);
@@ -659,12 +656,9 @@ static bool aes_save(const list_t in, list_t out)
 {
 	assert(in && list_element_size(in) == sizeof(char) && out && list_element_size(out) == sizeof(char));
 
-	if (!LIST_PUSH(out, aes_header[0])
-		|| !LIST_PUSH(out, aes_header[1])
-		|| !LIST_PUSH(out, aes_header[2]))
-	{
-		return false;
-	}
+	LIST_PUSH(out, aes_header[0]);
+	LIST_PUSH(out, aes_header[1]);
+	LIST_PUSH(out, aes_header[2]);
 
 	uint8_t key[KEY_SIZE];
 	struct isaac_state* rng = isaac_init(user_password);
@@ -690,10 +684,7 @@ static bool aes_save(const list_t in, list_t out)
 		memcpy(chunk, buf + i, curr_chunk_size);
 		aes_encrypt_chunk(chunk, output, key);
 		for (int j = 0; j < STATE_SIZE; j++)
-		{
-			if (!LIST_PUSH(out, output[j]))
-				return false;
-		}
+			LIST_PUSH(out, output[j]);
 	}
 
 #if _DEBUG
@@ -955,10 +946,9 @@ static bool dmc_save(const list_t in, list_t out)
 	int size = list_count(in);
 	const char* buf = list_element_array(in);
 
-	if (!LIST_PUSH(out, dmc_header[0])
-		|| !LIST_PUSH(out, dmc_header[1])
-		|| !LIST_PUSH(out, dmc_header[2]))
-		return false;
+	LIST_PUSH(out, dmc_header[0]);
+	LIST_PUSH(out, dmc_header[1]);
+	LIST_PUSH(out, dmc_header[2]);
 	
 	struct dmc_state* state = journal_malloc(sizeof * state);
 	dmc_predictor_init(state);
