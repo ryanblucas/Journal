@@ -138,7 +138,6 @@ void list_push(list_t list, const void* element)
 	memcpy(&list->element_array[list->element_size * list->count], element, list->element_size);
 	if (++list->count >= list->reserved)
 		list_reserve(list, list->reserved);
-	return true;
 }
 
 void list_pop(list_t list, void* out)

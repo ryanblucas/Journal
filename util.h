@@ -36,6 +36,11 @@ extern inline void* journal_malloc(size_t sz)
 #define LIST_PUSH(list, element)		(LIST_ASSERT_TYPEOF(list, element), list_push(list, &element))
 #define LIST_ADD(list, element, pos)	(LIST_ASSERT_TYPEOF(list, element), list_add(list, &element, pos))
 
+/*	these issue no warnings:
+	cast from 32-bit integer to 64-bit pointer causes a warning, but 64-bit integer to 64-bit pointer doesn't. */
+#define LIST_PUSH_PRIMITIVE(list, element)		(LIST_ASSERT_TYPEOF(list, element), list_push_primitive(list, (void*)((uintptr_t)(element))))
+#define LIST_ADD_PRIMITIVE(list, element, pos)	(LIST_ASSERT_TYPEOF(list, element), list_add_primitive(list, (void*)((uintptr_t)(element))))
+
 typedef struct list* list_t;
 
 int list_reserved(const list_t list);

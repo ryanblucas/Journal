@@ -665,7 +665,7 @@ static bool aes_save(const list_t in, list_t out)
 	for (int i = 0; i < KEY_SIZE; i++)
 		key[i] = rng->seed[rng->pos++] % 0x100;
 	for (int i = 0; i < 16; i++)
-		list_push_primitive(out, (void*)(rng->seed[rng->pos++] % 0x100));
+		LIST_PUSH_PRIMITIVE(out, rng->seed[rng->pos++] % 0x100);
 	free(rng);
 
 	int size = list_count(in);
@@ -980,7 +980,7 @@ static bool dmc_save(const list_t in, list_t out)
 			{
 				if (bit)
 					max--;
-				list_push_primitive(out, (void*)(min >> 16));
+				LIST_PUSH_PRIMITIVE(out, min >> 16);
 				out_bytes++;
 				min = (min << 8) & 0xFFFF00;
 				max = (max << 8) & 0xFFFF00;
@@ -998,9 +998,9 @@ static bool dmc_save(const list_t in, list_t out)
 	}
 
 	min = max - 1;
-	list_push_primitive(out, (void*)(min >> 16));
-	list_push_primitive(out, (void*)((min >> 8) & 0xFF));
-	list_push_primitive(out, (void*)(min & 0xFF));;
+	LIST_PUSH_PRIMITIVE(out, min >> 16);
+	LIST_PUSH_PRIMITIVE(out, (min >> 8) & 0xFF);
+	LIST_PUSH_PRIMITIVE(out, min & 0xFF);
 
 	free(state);
 	debug_format("Compressed file with Dynamic Markov Compression, in: %i, out: %i\n", in_bytes, out_bytes);

@@ -49,7 +49,7 @@ bool console_prompt_user(const char* _prompt, prompt_callback_t _callback)
 {
 	prev_lines = lines;
 	lines = list_create(sizeof(line_t));
-	line_t line = { .string = list_create_with_array(_prompt, sizeof(char), strnlen(_prompt, CONSOLE_MAX_PROMPT_LEN)) };
+	line_t line = { .string = list_create_with_array(_prompt, sizeof(char), (int)strnlen(_prompt, CONSOLE_MAX_PROMPT_LEN)) };
 	LIST_PUSH(lines, line);
 
 	prompt = _prompt;
@@ -521,7 +521,7 @@ static bool console_add_char_to_line(int ch, coords_t coords)
 	list_t string = LIST_GET(lines, coords.row, line_t)->string;
 	assert(list_count(string) >= coords.column);
 	if (ch == '\n')
-		return editor_add_newline(lines, coords);
+		editor_add_newline(lines, coords);
 	LIST_ADD(string, (char)ch, coords.column);
 	return true;
 }
@@ -755,7 +755,7 @@ void console_loop(void)
 		}
 		if (callback)
 		{
-			size_t len = strnlen(prompt, CONSOLE_MAX_PROMPT_LEN);
+			int len = (int)strnlen(prompt, CONSOLE_MAX_PROMPT_LEN);
 			cursor.column = max(cursor.column, len);
 			selection_begin.column = max(selection_begin.column, len);
 			if (cursor.row >= 1)
@@ -807,7 +807,7 @@ void console_copy_selection_string(list_t str)
 	if (!console_get_selection_region(&begin_coords, &end_coords))
 	{
 		list_push_primitive(str, 0);
-		return true;
+		return;
 	}
 	editor_copy_region(lines, str, begin_coords, end_coords);
 }
