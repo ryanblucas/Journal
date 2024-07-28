@@ -749,35 +749,36 @@ void console_loop(void)
 		switch (record.EventType)
 		{
 		case KEY_EVENT:
-			if (callback)
-			{
-				size_t len = strnlen(prompt, CONSOLE_MAX_PROMPT_LEN);
-				if (record.Event.KeyEvent.wVirtualKeyCode == VK_BACK
-					|| record.Event.KeyEvent.wVirtualKeyCode == VK_LEFT)
-				{
-					if (cursor.column <= len)
-						break;
-				}
-				else if (record.Event.KeyEvent.wVirtualKeyCode == VK_RETURN)
-				{
-					list_push_primitive(LIST_GET(lines, 0, line_t)->string, (void*)'\0');
-					callback((char*)list_element_array(LIST_GET(lines, 0, line_t)->string) + len);
-
-					list_destroy(lines);
-					lines = prev_lines;
-					console_move_cursor(prev_cursor);
-
-					prev_lines = NULL;
-					prompt = NULL;
-					callback = NULL;
-					break;
-				}
-			}
 			DEBUG_ON_FAILURE(console_handle_key_event(record.Event.KeyEvent));
+			if (callback && record.Event.KeyEvent.wVirtualKeyCode == VK_RETURN)
+				list_remove(lines, cursor.row); /* remove new line */
 			break;
 		case MOUSE_EVENT:
 			DEBUG_ON_FAILURE(console_handle_mouse_event(record.Event.MouseEvent));
 			break;
+		}
+		if (callback)
+		{
+			size_t len = strnlen(prompt, CONSOLE_MAX_PROMPT_LEN);
+			cursor.column = max(cursor.column, len);
+			selection_begin.column = max(selection_begin.column, len);
+			if (cursor.row >= 1)
+			{
+				list_t str = list_create(sizeof(char));
+				editor_copy_all_lines(lines, str);
+				callback((char*)list_element_array(str) + len);
+				list_destroy(str);
+
+				editor_destroy_lines(lines);
+				list_destroy(lines);
+
+				lines = prev_lines;
+				console_move_cursor(prev_cursor);
+
+				prev_lines = NULL;
+				prompt = NULL;
+				callback = NULL;
+			}
 		}
 		console_invalidate();
 	}
