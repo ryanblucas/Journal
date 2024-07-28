@@ -49,7 +49,7 @@ uint64_t list_hash(const list_t list);
 list_t list_create(int element_size);
 list_t list_create_with_array(const void* element_array, int element_size, int count);
 void list_destroy(list_t list);
-bool list_reserve(list_t list, int count);
+void list_reserve(list_t list, int count);
 bool list_push(list_t list, const void* element);
 void list_pop(list_t list, void* out);
 bool list_concat(list_t list, const list_t other, int pos);

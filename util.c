@@ -59,13 +59,7 @@ list_t list_get_range(const list_t list, int start, int end)
 
 	int space = end - start + 1;
 	if (space >= result->reserved)
-	{
-		if (!list_reserve(result, round_to_power_of_two(space) - result->reserved))
-		{
-			list_destroy(list);
-			return NULL;
-		}
-	}
+		list_reserve(result, round_to_power_of_two(space) - result->reserved);
 
 	memcpy(result->element_array, list->element_array + start, space);
 	result->count = space;
@@ -128,7 +122,7 @@ void list_destroy(list_t list)
 	free(list);
 }
 
-bool list_reserve(list_t list, int count)
+void list_reserve(list_t list, int count)
 {
 	assert(list != NULL && count >= 0);
 	if (count == 0)
@@ -136,9 +130,9 @@ bool list_reserve(list_t list, int count)
 
 	char* reallocated = journal_malloc((size_t)(list->reserved + count) * list->element_size);
 	memcpy(reallocated, list->element_array, list->reserved * list->element_size);
+	free(list->element_array);
 	list->element_array = reallocated;
 	list->reserved += count;
-	return true;
 }
 
 bool list_push(list_t list, const void* element)
@@ -177,7 +171,7 @@ bool list_concat(list_t list, const list_t other, int pos)
 	return true;
 }
 
-bool list_add(list_t list, const void* element, int pos)
+void list_add(list_t list, const void* element, int pos)
 {
 	assert(list != NULL && pos >= 0 && pos <= list->count);
 	int offset = list->element_size * pos;
@@ -185,7 +179,6 @@ bool list_add(list_t list, const void* element, int pos)
 	memcpy(&list->element_array[offset], element, list->element_size);
 	if (++list->count >= list->reserved)
 		list_reserve(list, list->reserved);
-	return true;
 }
 
 void list_remove(list_t list, int pos)
