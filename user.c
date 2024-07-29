@@ -58,6 +58,7 @@ static user_t user_default(void)
 		blank_saves = list_create(sizeof(file_save_t));
 	return (user_t)
 	{
+		.font = "Terminal",
 		.background = COLOR_DARK_BLUE,
 		.foreground = COLOR_LIGHT_YELLOW,
 		.desired_save_type = TYPE_PLAIN,
@@ -145,8 +146,12 @@ bool user_load(user_t* user)
 	bool success = size > 0
 		&& read_int(state, 0, size, (int*)&user->foreground)
 		&& read_int(state, INT_SIZE, size, (int*)&user->background)
-		&& read_int(state, INT_SIZE * 2, size, (int*)&user->desired_save_type)
-		&& (user->file_saves = user_load_saves(state, INT_SIZE * 3, size));
+		&& read_int(state, INT_SIZE * 2, size, (int*)&user->desired_save_type);
+
+	char* read = state + INT_SIZE * 3, *write = user->font;
+	while (*write++ = *read++);
+	user->file_saves = user_load_saves(state, INT_SIZE * 3, size);
+	success &= !!user->file_saves;
 	
 	free(state);
 	if (!success)
@@ -160,6 +165,7 @@ bool user_load(user_t* user)
 		user_unload_saves(cache.file_saves);
 		debug_format("Unloaded cached user\n");
 	}
+
 	has_cache = true;
 	cache = *user;
 	debug_format("Cached latest load request for user data\n");
@@ -176,9 +182,12 @@ bool user_save(user_t user)
 	if (!state_file)
 		return false;
 
+	size_t len = strnlen(user.font, sizeof user.font);
 	bool success = write_int(state_file, user.foreground)
 		&& write_int(state_file, user.background)
-		&& write_int(state_file, user.desired_save_type);
+		&& write_int(state_file, user.desired_save_type)
+		&& fwrite(user.font, 1, len, state_file) == len
+		&& fputc('\0', state_file) == '\0';
 
 	for (int i = 0; success && i < list_count(user.file_saves); i++)
 	{

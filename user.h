@@ -18,6 +18,7 @@ typedef struct file_save
 
 typedef struct user
 {
+	char font[32];
 	color_t foreground, background;
 	file_type_t desired_save_type;
 	list_t file_saves;

@@ -11,6 +11,9 @@
 #include <stdbool.h>
 #include "util.h"
 
+#define CONSOLE_GET_FOREGROUND(bm)	((bm) & 0x0F)
+#define CONSOLE_GET_BACKGROUND(bm)	(((bm) >> 4) & 0x0F)
+
 typedef enum color
 {
 	COLOR_BLACK,		// 000
@@ -52,6 +55,9 @@ const file_details_t console_file(void);
 list_t console_actions(void);
 list_t console_undid_actions(void);
 bool console_clipboard(list_t str);
+/* returns bitmask of console's colors. use CONSOLE_GET_****GROUND macros to extract what you need */
+int console_colors(void);
+const char* console_font(void);
 
 list_t console_lines(void);
 coords_t console_cursor(void);
@@ -62,6 +68,8 @@ void console_set_file_details(const file_details_t details);
 bool console_set_clipboard(const char* str, size_t size);
 /* set color and foreground of console */
 void console_set_color(color_t foreground, color_t background);
+/* copies font name in console */
+void console_set_font(const char* font);
 
 /* destroys the console if it is created then creates the console */
 bool console_create(void);

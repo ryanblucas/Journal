@@ -42,6 +42,8 @@ static prompt_callback_t callback;
 static list_t prev_lines;
 static coords_t prev_cursor;
 
+static CONSOLE_FONT_INFOEX font_info = { .cbSize = sizeof font_info, .nFont = 0, .dwFontSize.X = 0, .dwFontSize.Y = 12, .FontFamily = FF_DONTCARE, .FontWeight = FW_NORMAL };
+
 /* re-renders the screen */
 static bool console_invalidate(void);
 
@@ -143,6 +145,30 @@ bool console_clipboard(list_t str)
 	return true;
 }
 
+/* returns bitmask of console's colors. use CONSOLE_GET_****GROUND macros to extract what you need */
+int console_colors(void)
+{
+	assert(console_is_created());
+	return user_attribute;
+}
+
+const char* console_font(void)
+{
+	assert(console_is_created());
+	static char res[LF_FACESIZE];
+	assert(WideCharToMultiByte(CP_ACP, MB_ERR_INVALID_CHARS, font_info.FaceName, -1, res, 32, NULL, NULL) != 0);
+	return res;
+}
+
+/* copies font name in console */
+void console_set_font(const char* _font)
+{
+	assert(console_is_created() && _font);
+	if (!DEBUG_ON_FAILURE(MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, _font, -1, font_info.FaceName, 32) != 0))
+		return;
+	DEBUG_ON_FAILURE(SetCurrentConsoleFontEx(output, FALSE, &font_info));
+}
+
 static void console_set_title(const char* directory)
 {
 	char title_buf[128];
@@ -196,8 +222,9 @@ bool console_set_clipboard(const char* str, size_t size)
 /* set color and foreground of console */
 void console_set_color(color_t foreground, color_t background)
 {
+	assert(console_is_created());
 	user_attribute = CONSOLE_CREATE_ATTRIBUTE(foreground, background);
-	console_invalidate();
+	DEBUG_ON_FAILURE(console_invalidate());
 }
 
 static void console_destroy_interface(void)
@@ -469,13 +496,25 @@ static inline color_t console_to_color(const char* color)
 
 static void console_handle_background(const char* response)
 {
-	user_attribute = CONSOLE_CREATE_ATTRIBUTE(foreground, console_to_color(response));
+	user_t user = user_get_latest();
+	user.background = console_to_color(response);
+	user.foreground = foreground;
+	DEBUG_ON_FAILURE(user_save(user));
+	user_attribute = CONSOLE_CREATE_ATTRIBUTE(foreground, user.background);
 }
 
 static void console_handle_foreground(const char* response)
 {
 	foreground = console_to_color(response);
 	console_prompt_user_mc("Background color:\n" CONSOLE_COLOR_CHOICES, console_handle_background);
+}
+
+static void console_handle_font(const char* response)
+{
+	console_set_font(response);
+	user_t user = user_get_latest();
+	strncpy(user.font, response, sizeof user.font);
+	DEBUG_ON_FAILURE(user_save(user));
 }
 
 static bool console_handle_control_event(int ch, bool shifting)
@@ -488,13 +527,18 @@ static bool console_handle_control_event(int ch, bool shifting)
 		return console_paste();
 	case 'Y':
 		console_redo(NULL);
+		break;
 	case 'Z':
 		console_undo(NULL);
+		break;
 	case 'P':
 		console_prompt_user("Enter password: ", file_set_password);
 		break;
 	case 'U':
 		console_prompt_user_mc("Text color:\n" CONSOLE_COLOR_CHOICES, console_handle_foreground);
+		break;
+	case 'G':
+		console_prompt_user("Font: ", console_handle_font);
 		break;
 
 	case 'A':

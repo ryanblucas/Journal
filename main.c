@@ -51,6 +51,7 @@ static bool load_config(void)
 	if (!user_load(&user))
 		return false;
 	console_set_color(user.foreground, user.background);
+	console_set_font(user.font);
 	for (int i = 0; i < list_count(user.file_saves); i++)
 	{
 		file_save_t* save = LIST_GET(user.file_saves, 0, file_save_t);
