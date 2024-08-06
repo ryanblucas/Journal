@@ -150,7 +150,7 @@ bool user_load(user_t* user)
 
 	char* read = state + INT_SIZE * 3, *write = user->font;
 	while (*write++ = *read++);
-	user->file_saves = user_load_saves(state, INT_SIZE * 3, size);
+	user->file_saves = user_load_saves(state, read - state, size);
 	success &= !!user->file_saves;
 	
 	free(state);
