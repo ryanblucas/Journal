@@ -9,8 +9,6 @@
 All runs completely in the Windows terminal
 
 ## Images
-![alt text](DoomSourceCode.png)
-r_draw.c in Doom's source code, using a Borland theme.
-
+![r_draw.c in Doom's source code, using a Borland theme.](DoomSourceCode.png)
 ---
 DISCLAIMER: This application is for educational purposes and should not be used as a cryptographically secure application.
