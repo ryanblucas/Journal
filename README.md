@@ -7,5 +7,13 @@
 - Console theming
 
 All runs completely in the Windows terminal
+
+## Images
+![alt text](Lovecraft.png)
+Lovecraft's Call of Cthulhu.
+
+![alt text](DoomSourceCode.png)
+r_draw.c in Doom's source code.
+
 ---
 DISCLAIMER: This application is for educational purposes and should not be used as a cryptographically secure application.
